@@ -13,6 +13,8 @@ const REFRESH_INTERVAL_MS = 5000;
 export default function Dashboard() {
   const [vessels, setVessels] = useState<Vessel[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [alertsTotal, setAlertsTotal] = useState(0);
+  const alertsLimitRef = useRef(50);
   const [geofences, setGeofences] = useState<Geofence[]>([]);
   const [regions, setRegions] = useState<Record<string, Region>>({});
   const [activeRegion, setActiveRegion] = useState<string | null>(null);
@@ -34,8 +36,9 @@ export default function Dashboard() {
           api.getGeofences(),
           api.getRegions(),
         ]);
-        setVessels(v);
-        setAlerts(a);
+        setVessels(v.items);
+        setAlerts(a.items);
+        setAlertsTotal(a.total);
         setGeofences(g);
         setRegions(r);
         setLoading(false);
@@ -61,11 +64,12 @@ export default function Dashboard() {
         const regionParam = activeRegion || undefined;
         const [v, a, status] = await Promise.all([
           api.getVessels(regionParam),
-          api.getAlerts(undefined, regionParam),
+          api.getAlerts(undefined, regionParam, alertsLimitRef.current),
           api.getIngestionStatus().catch(() => null),
         ]);
-        setVessels(v);
-        setAlerts(a);
+        setVessels(v.items);
+        setAlerts(a.items);
+        setAlertsTotal(a.total);
         if (status) setIngestionStatus(status);
       } catch {}
     }, REFRESH_INTERVAL_MS);
@@ -78,6 +82,7 @@ export default function Dashboard() {
     setActiveRegion(regionKey);
     setSelectedVessel(null);
     setSelectedAlertId(null);
+    alertsLimitRef.current = 50;
 
     // Fly to the region
     if (regionKey && regions[regionKey]) {
@@ -95,8 +100,9 @@ export default function Dashboard() {
         api.getVessels(regionParam),
         api.getAlerts(undefined, regionParam),
       ]);
-      setVessels(v);
-      setAlerts(a);
+      setVessels(v.items);
+      setAlerts(a.items);
+      setAlertsTotal(a.total);
     } catch {}
   }, [regions]);
 
@@ -135,6 +141,17 @@ export default function Dashboard() {
     }
   }, []);
 
+  const handleLoadMoreAlerts = useCallback(async () => {
+    try {
+      const regionParam = activeRegion || undefined;
+      const newLimit = alerts.length + 50;
+      const a = await api.getAlerts(undefined, regionParam, newLimit);
+      alertsLimitRef.current = newLimit;
+      setAlerts(a.items);
+      setAlertsTotal(a.total);
+    } catch {}
+  }, [activeRegion, alerts.length]);
+
   const handleCloseDetail = useCallback(() => {
     setSelectedVessel(null);
     setSelectedAlertId(null);
@@ -142,12 +159,12 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="h-screen flex flex-col bg-[#0b0f1a]">
+      <div className="h-screen flex flex-col bg-[#070a12]">
         <Header alertCount={0} vesselCount={0} isLive={false} regions={{}} activeRegion={null} onRegionChange={() => {}} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-sm text-slate-400">Initializing HarborOS...</p>
+            <div className="w-10 h-10 border-2 border-blue-500/30 border-t-blue-400 rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-xs text-slate-500 tracking-wider uppercase">Initializing HarborOS</p>
           </div>
         </div>
       </div>
@@ -156,15 +173,19 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <div className="h-screen flex flex-col bg-[#0b0f1a]">
+      <div className="h-screen flex flex-col bg-[#070a12]">
         <Header alertCount={0} vesselCount={0} isLive={false} regions={{}} activeRegion={null} onRegionChange={() => {}} />
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-md">
-            <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
-              <span className="text-red-400 text-xl">!</span>
+          <div className="text-center max-w-sm">
+            <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-5">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-red-400">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
             </div>
-            <p className="text-sm text-slate-300 mb-2">Connection Failed</p>
-            <p className="text-xs text-slate-500">{error}</p>
+            <p className="text-sm font-medium text-slate-200 mb-2">Connection Failed</p>
+            <p className="text-xs text-slate-500 leading-relaxed">{error}</p>
           </div>
         </div>
       </div>
@@ -174,7 +195,7 @@ export default function Dashboard() {
   const isLive = ingestionStatus?.running && ingestionStatus?.connected;
 
   return (
-    <div className="h-screen flex flex-col bg-[#0b0f1a]">
+    <div className="h-screen flex flex-col bg-[#070a12]">
       <Header
         alertCount={alerts.filter((a) => a.status === "active").length}
         vesselCount={vessels.length}
@@ -187,8 +208,10 @@ export default function Dashboard() {
       <div className="flex-1 flex overflow-hidden">
         <AlertFeed
           alerts={alerts}
+          alertsTotal={alertsTotal}
           selectedAlertId={selectedAlertId}
           onSelectAlert={handleSelectAlert}
+          onLoadMore={handleLoadMoreAlerts}
         />
         <MapView
           vessels={vessels}
