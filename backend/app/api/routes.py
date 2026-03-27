@@ -6,6 +6,7 @@ import json
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -42,31 +43,48 @@ def list_regions():
 
 # ── Vessels ────────────────────────────────────────────
 
-@router.get("/vessels", response_model=list[VesselSchema])
+@router.get("/vessels")
 def list_vessels(
     region: str | None = Query(None, description="Filter by region key"),
+    limit: int = Query(500, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
-    """List all vessels with latest position and risk info."""
-    query = db.query(VesselORM)
+    """List vessels with latest position and risk info (paginated)."""
+    base_query = db.query(VesselORM)
     if region:
-        query = query.filter(VesselORM.region == region)
-    vessels = query.all()
-    result = []
-    for v in vessels:
-        latest_pos = (
-            db.query(PositionReportORM)
-            .filter(PositionReportORM.vessel_id == v.id)
-            .order_by(PositionReportORM.timestamp.desc())
-            .first()
+        base_query = base_query.filter(VesselORM.region == region)
+    total = base_query.count()
+
+    latest_pos_sq = (
+        db.query(
+            PositionReportORM.vessel_id,
+            func.max(PositionReportORM.timestamp).label("max_ts"),
         )
-        # Get active alert for risk info
-        alert = (
-            db.query(AlertORM)
-            .filter(AlertORM.vessel_id == v.id, AlertORM.status == "active")
-            .first()
+        .group_by(PositionReportORM.vessel_id)
+        .subquery()
+    )
+
+    rows = (
+        db.query(VesselORM, PositionReportORM, AlertORM)
+        .outerjoin(latest_pos_sq, VesselORM.id == latest_pos_sq.c.vessel_id)
+        .outerjoin(
+            PositionReportORM,
+            (PositionReportORM.vessel_id == latest_pos_sq.c.vessel_id)
+            & (PositionReportORM.timestamp == latest_pos_sq.c.max_ts),
         )
-        result.append(VesselSchema(
+        .outerjoin(
+            AlertORM,
+            (AlertORM.vessel_id == VesselORM.id) & (AlertORM.status == "active"),
+        )
+    )
+    if region:
+        rows = rows.filter(VesselORM.region == region)
+    rows = rows.limit(limit).offset(offset).all()
+
+    items = []
+    for v, pos, alert in rows:
+        items.append(VesselSchema(
             id=v.id,
             mmsi=v.mmsi,
             name=v.name,
@@ -80,17 +98,17 @@ def list_vessels(
             destination=v.destination,
             region=v.region,
             latest_position=PositionReportSchema(
-                timestamp=latest_pos.timestamp,
-                latitude=latest_pos.latitude,
-                longitude=latest_pos.longitude,
-                speed_over_ground=latest_pos.speed_over_ground,
-                course_over_ground=latest_pos.course_over_ground,
-                heading=latest_pos.heading,
-            ) if latest_pos else None,
+                timestamp=pos.timestamp,
+                latitude=pos.latitude,
+                longitude=pos.longitude,
+                speed_over_ground=pos.speed_over_ground,
+                course_over_ground=pos.course_over_ground,
+                heading=pos.heading,
+            ) if pos else None,
             risk_score=alert.risk_score if alert else 0,
             recommended_action=alert.recommended_action if alert else "ignore",
         ))
-    return result
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/vessels/{vessel_id}", response_model=VesselDetailSchema)
