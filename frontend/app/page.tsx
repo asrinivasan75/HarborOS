@@ -13,6 +13,8 @@ const REFRESH_INTERVAL_MS = 5000;
 export default function Dashboard() {
   const [vessels, setVessels] = useState<Vessel[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [alertsTotal, setAlertsTotal] = useState(0);
+  const alertsLimitRef = useRef(50);
   const [geofences, setGeofences] = useState<Geofence[]>([]);
   const [regions, setRegions] = useState<Record<string, Region>>({});
   const [activeRegion, setActiveRegion] = useState<string | null>(null);
@@ -34,8 +36,9 @@ export default function Dashboard() {
           api.getGeofences(),
           api.getRegions(),
         ]);
-        setVessels(v);
-        setAlerts(a);
+        setVessels(v.items);
+        setAlerts(a.items);
+        setAlertsTotal(a.total);
         setGeofences(g);
         setRegions(r);
         setLoading(false);
@@ -61,11 +64,12 @@ export default function Dashboard() {
         const regionParam = activeRegion || undefined;
         const [v, a, status] = await Promise.all([
           api.getVessels(regionParam),
-          api.getAlerts(undefined, regionParam),
+          api.getAlerts(undefined, regionParam, alertsLimitRef.current),
           api.getIngestionStatus().catch(() => null),
         ]);
-        setVessels(v);
-        setAlerts(a);
+        setVessels(v.items);
+        setAlerts(a.items);
+        setAlertsTotal(a.total);
         if (status) setIngestionStatus(status);
       } catch {}
     }, REFRESH_INTERVAL_MS);
@@ -78,6 +82,7 @@ export default function Dashboard() {
     setActiveRegion(regionKey);
     setSelectedVessel(null);
     setSelectedAlertId(null);
+    alertsLimitRef.current = 50;
 
     // Fly to the region
     if (regionKey && regions[regionKey]) {
@@ -95,8 +100,9 @@ export default function Dashboard() {
         api.getVessels(regionParam),
         api.getAlerts(undefined, regionParam),
       ]);
-      setVessels(v);
-      setAlerts(a);
+      setVessels(v.items);
+      setAlerts(a.items);
+      setAlertsTotal(a.total);
     } catch {}
   }, [regions]);
 
@@ -134,6 +140,17 @@ export default function Dashboard() {
       console.error("Failed to load vessel detail:", e);
     }
   }, []);
+
+  const handleLoadMoreAlerts = useCallback(async () => {
+    try {
+      const regionParam = activeRegion || undefined;
+      const newLimit = alerts.length + 50;
+      const a = await api.getAlerts(undefined, regionParam, newLimit);
+      alertsLimitRef.current = newLimit;
+      setAlerts(a.items);
+      setAlertsTotal(a.total);
+    } catch {}
+  }, [activeRegion, alerts.length]);
 
   const handleCloseDetail = useCallback(() => {
     setSelectedVessel(null);
@@ -187,8 +204,10 @@ export default function Dashboard() {
       <div className="flex-1 flex overflow-hidden">
         <AlertFeed
           alerts={alerts}
+          alertsTotal={alertsTotal}
           selectedAlertId={selectedAlertId}
           onSelectAlert={handleSelectAlert}
+          onLoadMore={handleLoadMoreAlerts}
         />
         <MapView
           vessels={vessels}

@@ -121,9 +121,10 @@ def get_vessel_detail(vessel_id: str, db: Session = Depends(get_db)):
     positions = (
         db.query(PositionReportORM)
         .filter(PositionReportORM.vessel_id == vessel_id)
-        .order_by(PositionReportORM.timestamp)
+        .order_by(PositionReportORM.timestamp.desc())
+        .limit(200)
         .all()
-    )
+    )[::-1]
 
     alert = (
         db.query(AlertORM)
@@ -204,21 +205,17 @@ def get_vessel_risk(vessel_id: str, db: Session = Depends(get_db)):
 
 # ── Alerts ─────────────────────────────────────────────
 
-@router.get("/alerts", response_model=list[AlertSchema])
+@router.get("/alerts")
 def list_alerts(
     status: str | None = Query(None, description="Filter by status"),
     region: str | None = Query(None, description="Filter by region key"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
-    """List alerts sorted by severity."""
-    alerts = get_alerts(db, status=status)
-    if region:
-        # Filter alerts by vessel region
-        vessel_ids_in_region = {
-            v.id for v in db.query(VesselORM).filter(VesselORM.region == region).all()
-        }
-        alerts = [a for a in alerts if a.vessel_id in vessel_ids_in_region]
-    return alerts
+    """List alerts sorted by severity (paginated)."""
+    alerts, total = get_alerts(db, status=status, region=region, limit=limit, offset=offset)
+    return {"items": alerts, "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/alerts/{alert_id}", response_model=AlertSchema)

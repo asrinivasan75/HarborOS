@@ -120,19 +120,34 @@ export interface IngestionStatus {
   };
 }
 
+// ── Paginated Response ────────────────────────────────
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 // ── API Functions ─────────────────────────────────────
 
 export const api = {
   getRegions: () => fetchAPI<Record<string, Region>>("/regions"),
-  getVessels: (region?: string) =>
-    fetchAPI<Vessel[]>(`/vessels${region ? `?region=${region}` : ""}`),
+  getVessels: (region?: string, limit = 500, offset = 0) => {
+    const params = new URLSearchParams();
+    if (region) params.set("region", region);
+    params.set("limit", String(limit));
+    params.set("offset", String(offset));
+    return fetchAPI<PaginatedResponse<Vessel>>(`/vessels?${params}`);
+  },
   getVesselDetail: (id: string) => fetchAPI<VesselDetail>(`/vessels/${id}`),
-  getAlerts: (status?: string, region?: string) => {
+  getAlerts: (status?: string, region?: string, limit = 50, offset = 0) => {
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (region) params.set("region", region);
-    const qs = params.toString();
-    return fetchAPI<Alert[]>(`/alerts${qs ? `?${qs}` : ""}`);
+    params.set("limit", String(limit));
+    params.set("offset", String(offset));
+    return fetchAPI<PaginatedResponse<Alert>>(`/alerts?${params}`);
   },
   getAlertDetail: (id: string) => fetchAPI<Alert>(`/alerts/${id}`),
   updateAlert: (id: string, status: string) =>

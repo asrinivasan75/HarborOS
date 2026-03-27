@@ -4,8 +4,10 @@ import type { Alert } from "@/app/lib/api";
 
 interface AlertFeedProps {
   alerts: Alert[];
+  alertsTotal: number;
   selectedAlertId: string | null;
   onSelectAlert: (alert: Alert) => void;
+  onLoadMore: () => void;
 }
 
 function actionColor(action: string): string {
@@ -42,13 +44,18 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(diffHr / 24)}d ago`;
 }
 
-export default function AlertFeed({ alerts, selectedAlertId, onSelectAlert }: AlertFeedProps) {
+export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSelectAlert, onLoadMore }: AlertFeedProps) {
+  const hasMore = alerts.length < alertsTotal;
+
   return (
     <div className="w-80 bg-[#111827] border-r border-slate-700/50 flex flex-col shrink-0">
-      <div className="p-3 border-b border-slate-700/50">
+      <div className="p-3 border-b border-slate-700/50 flex items-center justify-between">
         <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
           Alert Feed
         </h2>
+        <span className="text-[10px] font-mono text-slate-500">
+          {alerts.length}/{alertsTotal}
+        </span>
       </div>
       <div className="flex-1 overflow-y-auto">
         {alerts.length === 0 ? (
@@ -90,6 +97,14 @@ export default function AlertFeed({ alerts, selectedAlertId, onSelectAlert }: Al
               </p>
             </button>
           ))
+        )}
+        {hasMore && (
+          <button
+            onClick={onLoadMore}
+            className="w-full p-2 text-[11px] text-blue-400 hover:bg-slate-800/50 transition-colors"
+          >
+            Load more ({alertsTotal - alerts.length} remaining)
+          </button>
         )}
       </div>
     </div>

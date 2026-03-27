@@ -116,13 +116,23 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
     return alerts_created
 
 
-def get_alerts(db: Session, status: str | None = None) -> list[AlertSchema]:
-    """Get alerts with vessel info, sorted by risk score desc."""
+def get_alerts(
+    db: Session,
+    status: str | None = None,
+    region: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[AlertSchema], int]:
+    """Get alerts with vessel info, sorted by risk score desc (paginated)."""
     query = db.query(AlertORM).join(VesselORM)
     if status:
         query = query.filter(AlertORM.status == status)
+    if region:
+        query = query.filter(VesselORM.region == region)
     query = query.order_by(AlertORM.risk_score.desc())
-    alerts = query.all()
+
+    total = query.count()
+    alerts = query.offset(offset).limit(limit).all()
 
     result = []
     for alert in alerts:
@@ -139,7 +149,7 @@ def get_alerts(db: Session, status: str | None = None) -> list[AlertSchema]:
             explanation=alert.explanation,
             anomaly_signals=[AnomalySignalSchema(**s) for s in signals],
         ))
-    return result
+    return result, total
 
 
 def update_alert_status(db: Session, alert_id: str, status: str, notes: str | None = None) -> AlertORM | None:
