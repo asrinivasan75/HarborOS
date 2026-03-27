@@ -13,7 +13,7 @@ interface MapViewProps {
   flyTo?: { center: [number, number]; zoom: number } | null;
 }
 
-function vesselColor(score: number | null, action: string | null): string {
+function vesselColor(score: number | null): string {
   if (!score || score < 25) return "#22c55e";
   if (score < 45) return "#f59e0b";
   if (score < 70) return "#f97316";
@@ -40,7 +40,6 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
     const map = mapRef.current;
     if (!map) return;
 
-    // Clear existing markers
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
@@ -48,21 +47,20 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
       if (!vessel.latest_position) return;
 
       const score = vessel.risk_score ?? 0;
-      const color = vesselColor(vessel.risk_score, vessel.recommended_action);
+      const color = vesselColor(vessel.risk_score);
       const isSelected = vessel.id === selectedVesselId;
-      const size = isSelected ? 14 : score >= 45 ? 11 : 8;
+      const size = isSelected ? 16 : score >= 45 ? 12 : 9;
 
       const el = document.createElement("div");
       el.style.width = `${size}px`;
       el.style.height = `${size}px`;
       el.style.borderRadius = "50%";
       el.style.backgroundColor = color;
-      el.style.border = isSelected ? "2px solid #fff" : `1px solid ${color}`;
-      el.style.boxShadow = `0 0 ${score >= 45 ? "8" : "4"}px ${color}60`;
+      el.style.border = isSelected ? "2px solid #e2e8f0" : "1.5px solid rgba(0,0,0,0.4)";
+      el.style.boxShadow = `0 0 ${score >= 70 ? "12" : score >= 45 ? "8" : "4"}px ${color}${score >= 45 ? "80" : "40"}`;
       el.style.cursor = "pointer";
-      el.style.transition = "all 0.2s";
+      el.style.transition = "all 0.2s ease";
 
-      // Pulsing animation for high-risk vessels
       if (score >= 70) {
         el.style.animation = "pulse 2s infinite";
       }
@@ -71,6 +69,9 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
         e.stopPropagation();
         onSelectVessel(vessel.id);
       });
+
+      // Tooltip on hover
+      el.title = `${vessel.name} (${vessel.mmsi})`;
 
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat([vessel.latest_position.longitude, vessel.latest_position.latitude])
@@ -125,7 +126,6 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
     map.on("load", () => {
       mapRef.current = map;
 
-      // Add geofences
       geofences.forEach((gf) => {
         const color = geofenceColor(gf.zone_type);
         map.addSource(`geofence-${gf.id}`, {
@@ -143,7 +143,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
           source: `geofence-${gf.id}`,
           paint: {
             "fill-color": color,
-            "fill-opacity": 0.08,
+            "fill-opacity": 0.06,
           },
         });
 
@@ -153,9 +153,9 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
           source: `geofence-${gf.id}`,
           paint: {
             "line-color": color,
-            "line-width": 1.5,
-            "line-dasharray": [4, 2],
-            "line-opacity": 0.5,
+            "line-width": 1,
+            "line-dasharray": [4, 3],
+            "line-opacity": 0.4,
           },
         });
       });
@@ -173,7 +173,6 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
     updateMarkers();
   }, [updateMarkers]);
 
-  // Fly to region when changed
   useEffect(() => {
     if (!flyTo || !mapRef.current) return;
     mapRef.current.flyTo({
@@ -186,30 +185,29 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
   return (
     <div className="flex-1 relative" style={{ minHeight: 0 }}>
       <div ref={mapContainer} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" }} />
-      {/* Vessel legend */}
-      <div className="absolute bottom-4 left-4 bg-[#111827]/90 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 text-[10px]">
-        <div className="text-slate-500 uppercase tracking-wider mb-2 font-semibold">Risk Level</div>
-        <div className="space-y-1.5">
+      {/* Legend */}
+      <div className="absolute bottom-4 left-4 bg-[#0d1320]/95 backdrop-blur-md border border-[#1a2235] rounded-xl p-3.5 text-[10px] shadow-xl shadow-black/30">
+        <div className="text-[9px] text-slate-500 uppercase tracking-[0.15em] mb-2.5 font-semibold">Risk Level</div>
+        <div className="space-y-2">
           <LegendItem color="#22c55e" label="Normal" />
           <LegendItem color="#f59e0b" label="Monitor" />
           <LegendItem color="#f97316" label="Verify" />
           <LegendItem color="#ef4444" label="Escalate" />
         </div>
-        <div className="border-t border-slate-700/50 mt-2 pt-2 text-slate-500 uppercase tracking-wider mb-1.5 font-semibold">
+        <div className="border-t border-[#1a2235] mt-3 pt-3 text-[9px] text-slate-500 uppercase tracking-[0.15em] mb-2.5 font-semibold">
           Zones
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <LegendItem color="#ef4444" label="Restricted" dashed />
           <LegendItem color="#f97316" label="Security" dashed />
           <LegendItem color="#3b82f6" label="Shipping Lane" dashed />
           <LegendItem color="#22c55e" label="Anchorage" dashed />
         </div>
       </div>
-      {/* Pulse keyframe */}
       <style jsx global>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.7; transform: scale(1.3); }
+          50% { opacity: 0.7; transform: scale(1.4); }
         }
       `}</style>
     </div>
@@ -218,11 +216,11 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
 
 function LegendItem({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2.5">
       {dashed ? (
-        <div className="w-4 h-0 border-t-2 border-dashed" style={{ borderColor: color }} />
+        <div className="w-4 h-0 border-t-[1.5px] border-dashed" style={{ borderColor: color }} />
       ) : (
-        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+        <div className="w-2 h-2 rounded-full shadow-sm" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}60` }} />
       )}
       <span className="text-slate-400">{label}</span>
     </div>

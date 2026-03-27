@@ -17,64 +17,70 @@ export default function Header({
   regions, activeRegion, onRegionChange,
 }: HeaderProps) {
   return (
-    <header className="h-12 bg-[#111827] border-b border-slate-700/50 flex items-center justify-between px-4 shrink-0">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${isLive ? "bg-emerald-500" : "bg-amber-500"} animate-pulse`} />
-          <h1 className="text-sm font-semibold tracking-wide text-slate-100">
-            HARBOR<span className="text-blue-400">OS</span>
-          </h1>
+    <header className="h-14 bg-[#0d1320] border-b border-[#1a2235] flex items-center justify-between px-5 shrink-0">
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400">
+              <path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" />
+            </svg>
+          </div>
+          <div className="flex flex-col">
+            <h1 className="text-base font-semibold tracking-wide text-slate-100 leading-tight">
+              HARBOR<span className="text-blue-400">OS</span>
+            </h1>
+            <span className="text-[7px] text-slate-500 uppercase tracking-[0.15em] leading-tight">
+              Maritime Awareness
+            </span>
+          </div>
         </div>
-        <span className="text-[10px] text-slate-500 uppercase tracking-widest hidden md:inline">
-          Maritime Awareness Platform
-        </span>
-      </div>
 
-      <div className="flex items-center gap-3 text-xs text-slate-400">
-        {/* Region selector */}
+        <div className="h-6 w-px bg-[#1a2235] mx-1" />
+
         <select
           value={activeRegion || "__all__"}
           onChange={(e) => onRegionChange(e.target.value === "__all__" ? null : e.target.value)}
-          className="bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-500 cursor-pointer"
+          className="bg-[#111827] border border-[#1a2235] text-slate-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 cursor-pointer transition-colors hover:border-slate-600"
         >
           <option value="__all__">All Regions</option>
           {Object.entries(regions).map(([key, r]) => (
             <option key={key} value={key}>{r.name}</option>
           ))}
         </select>
+      </div>
 
-        <div className="h-4 w-px bg-slate-700" />
-
-        <div className="flex items-center gap-1.5">
-          <span className="text-slate-500">CONTACTS</span>
-          <span className="font-mono text-slate-200">{vesselCount}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-slate-500">ALERTS</span>
-          <span className={`font-mono ${alertCount > 0 ? "text-red-400" : "text-slate-200"}`}>
-            {alertCount}
-          </span>
-        </div>
+      <div className="flex items-center gap-1">
+        <Stat label="CONTACTS" value={vesselCount} />
+        <Stat label="ALERTS" value={alertCount} alert={alertCount > 0} />
         {isLive && positionsIngested != null && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-500">INGESTED</span>
-            <span className="font-mono text-slate-200">{positionsIngested.toLocaleString()}</span>
-          </div>
+          <Stat label="INGESTED" value={positionsIngested.toLocaleString()} />
         )}
 
-        <div className="h-4 w-px bg-slate-700" />
+        <div className="h-6 w-px bg-[#1a2235] mx-2" />
 
-        <div className="flex items-center gap-1.5">
-          {isLive ? (
-            <span className="font-mono text-emerald-400 flex items-center gap-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              LIVE
-            </span>
-          ) : (
-            <span className="font-mono text-amber-400">SCENARIO</span>
-          )}
-        </div>
+        {isLive ? (
+          <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-1.5">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" style={{ animation: "subtle-pulse 2s infinite" }} />
+            <span className="text-[10px] font-semibold text-emerald-400 tracking-wider">LIVE</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <span className="text-[10px] font-semibold text-amber-400 tracking-wider">SCENARIO</span>
+          </div>
+        )}
       </div>
     </header>
+  );
+}
+
+function Stat({ label, value, alert }: { label: string; value: number | string; alert?: boolean }) {
+  return (
+    <div className="flex items-center gap-2 bg-[#111827]/60 rounded-lg px-3 py-1.5">
+      <span className="text-[9px] text-slate-500 font-medium tracking-wider">{label}</span>
+      <span className={`text-xs font-mono font-semibold ${alert ? "text-red-400" : "text-slate-200"}`}>
+        {value}
+      </span>
+    </div>
   );
 }
