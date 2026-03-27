@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0b0f1a;
+  --background: #070a12;
   --foreground: #e2e8f0;
-  --panel-bg: #111827;
-  --panel-border: #1e293b;
+  --panel-bg: #0d1320;
+  --panel-border: #1a2235;
   --accent-blue: #3b82f6;
   --accent-red: #ef4444;
   --accent-yellow: #f59e0b;
@@ -29,39 +29,60 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
 }
 
 /* MapLibre overrides for dark theme */
 .maplibregl-popup-content {
-  background: #1e293b !important;
+  background: #1a2235 !important;
   color: #e2e8f0 !important;
   border-radius: 8px !important;
   padding: 12px !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+  border: 1px solid rgba(59, 130, 246, 0.15) !important;
 }
 
 .maplibregl-popup-tip {
-  border-top-color: #1e293b !important;
+  border-top-color: #1a2235 !important;
 }
 
 .maplibregl-ctrl-group {
-  background: #1e293b !important;
-  border: 1px solid #334155 !important;
+  background: #0d1320 !important;
+  border: 1px solid #1a2235 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
 }
 
 .maplibregl-ctrl-group button {
-  filter: invert(1);
+  filter: invert(0.85);
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top-color: #1a2235 !important;
 }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: #0b0f1a;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
   background: #334155;
-  border-radius: 3px;
+}
+
+/* Pulse animation for risk dots */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px currentColor; }
+  50% { opacity: 0.6; box-shadow: 0 0 12px currentColor; }
+}
+
+@keyframes subtle-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
