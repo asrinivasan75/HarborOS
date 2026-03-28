@@ -82,14 +82,11 @@ function buildMapStyle(baseMap: BaseMap): maplibregl.StyleSpecification {
         "satellite": {
           type: "raster",
           tiles: [
-            "https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-            "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-            "https://mt2.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-            "https://mt3.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
           ],
           tileSize: 256,
-          maxzoom: 20,
-          attribution: "&copy; Google",
+          maxzoom: 18,
+          attribution: "&copy; Esri, Maxar, Earthstar Geographics",
         },
         "carto-labels": {
           type: "raster",
@@ -217,8 +214,8 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
       pitch: 0,
     });
 
-    map.on("error", (e) => {
-      console.error("MapLibre error:", e);
+    map.on("error", () => {
+      // Suppress tile loading errors (403s from tile providers are normal)
     });
 
     map.addControl(new maplibregl.NavigationControl(), "top-right");
