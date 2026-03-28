@@ -205,6 +205,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Record<string, { marker: maplibregl.Marker; el: HTMLDivElement }>>({});
   const [baseMap, setBaseMap] = useState<BaseMap>("satellite");
+  const [heatmap, setHeatmap] = useState(false);
 
   const updateMarkers = useCallback(() => {
     const map = mapRef.current;
@@ -327,6 +328,35 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
         });
       });
 
+      // Heatmap source & layer
+      map.addSource("vessel-heatmap", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      map.addLayer({
+        id: "vessel-heatmap-layer",
+        type: "heatmap",
+        source: "vessel-heatmap",
+        layout: { visibility: "none" },
+        paint: {
+          "heatmap-weight": ["interpolate", ["linear"], ["get", "risk"], 0, 0.2, 100, 1],
+          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 15, 2],
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 20, 15, 40],
+          "heatmap-color": [
+            "interpolate",
+            ["linear"],
+            ["heatmap-density"],
+            0, "rgba(0,0,0,0)",
+            0.2, "rgba(0,0,255,0.4)",
+            0.4, "rgba(0,255,255,0.6)",
+            0.6, "rgba(255,255,0,0.7)",
+            1, "rgba(255,0,0,0.9)",
+          ],
+          "heatmap-opacity": 0.6,
+        },
+      });
+
       updateMarkers();
     });
 
@@ -339,6 +369,35 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
   useEffect(() => {
     updateMarkers();
   }, [updateMarkers]);
+
+  // Update heatmap source data and visibility
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!map.getSource("vessel-heatmap")) return;
+
+    if (heatmap) {
+      const features = vessels
+        .filter((v) => v.latest_position)
+        .map((v) => ({
+          type: "Feature" as const,
+          geometry: {
+            type: "Point" as const,
+            coordinates: [v.latest_position!.longitude, v.latest_position!.latitude],
+          },
+          properties: { risk: v.risk_score ?? 0 },
+        }));
+
+      (map.getSource("vessel-heatmap") as maplibregl.GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features,
+      });
+      map.setLayoutProperty("vessel-heatmap-layer", "visibility", "visible");
+    } else {
+      map.setLayoutProperty("vessel-heatmap-layer", "visibility", "none");
+    }
+  }, [vessels, heatmap]);
 
   // Switch base map style
   useEffect(() => {
@@ -368,6 +427,35 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
           });
         }
       });
+      // Re-add heatmap source & layer after style change
+      if (!map.getSource("vessel-heatmap")) {
+        map.addSource("vessel-heatmap", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addLayer({
+          id: "vessel-heatmap-layer",
+          type: "heatmap",
+          source: "vessel-heatmap",
+          layout: { visibility: heatmap ? "visible" : "none" },
+          paint: {
+            "heatmap-weight": ["interpolate", ["linear"], ["get", "risk"], 0, 0.2, 100, 1],
+            "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 15, 2],
+            "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 20, 15, 40],
+            "heatmap-color": [
+              "interpolate",
+              ["linear"],
+              ["heatmap-density"],
+              0, "rgba(0,0,0,0)",
+              0.2, "rgba(0,0,255,0.4)",
+              0.4, "rgba(0,255,255,0.6)",
+              0.6, "rgba(255,255,0,0.7)",
+              1, "rgba(255,0,0,0.9)",
+            ],
+            "heatmap-opacity": 0.6,
+          },
+        });
+      }
       updateMarkers();
     });
   }, [baseMap]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -544,11 +632,21 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
           onClick={() => setBaseMap("dark")}
           className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
             baseMap === "dark"
+              ? "bg-blue-500/20 text-blue-400 border-r border-[#1a2235]"
+              : "text-slate-500 hover:text-slate-300 border-r border-[#1a2235]"
+          }`}
+        >
+          Dark
+        </button>
+        <button
+          onClick={() => setHeatmap((prev) => !prev)}
+          className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+            heatmap
               ? "bg-blue-500/20 text-blue-400"
               : "text-slate-500 hover:text-slate-300"
           }`}
         >
-          Dark
+          Heatmap
         </button>
       </div>
       <style jsx global>{`
