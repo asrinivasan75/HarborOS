@@ -4,10 +4,13 @@ import { useState, useCallback, useEffect } from "react";
 import type { VesselDetail as VesselDetailType, VerificationRequest } from "@/app/lib/api";
 import { api } from "@/app/lib/api";
 
+import type { SatelliteFootprint } from "./MapView";
+
 interface VesselDetailProps {
   vessel: VesselDetailType;
   alertId: string | null;
   onClose: () => void;
+  onSatelliteFootprint?: (footprint: SatelliteFootprint | null) => void;
 }
 
 function actionStyle(action: string) {
@@ -32,7 +35,7 @@ function severityBarColor(severity: number): string {
   return "bg-yellow-400";
 }
 
-export default function VesselDetailPanel({ vessel, alertId, onClose }: VesselDetailProps) {
+export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint }: VesselDetailProps) {
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
 
@@ -238,7 +241,12 @@ export default function VesselDetailPanel({ vessel, alertId, onClose }: VesselDe
         <div className="p-5">
           <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Verification</h3>
           {verification ? (
-            <SatelliteVerificationResult verification={verification} />
+            <SatelliteVerificationResult
+              verification={verification}
+              vesselPosition={vessel.latest_position}
+              vesselName={vessel.name}
+              onFootprint={onSatelliteFootprint}
+            />
           ) : (
             <div className="space-y-2.5">
               <div className="grid grid-cols-4 gap-1.5">
@@ -385,8 +393,16 @@ function InfoRow({ label, value, highlight }: { label: string; value: string; hi
   );
 }
 
-function SatelliteVerificationResult({ verification }: { verification: VerificationRequest }) {
+interface SatVrProps {
+  verification: VerificationRequest;
+  vesselPosition?: { latitude: number; longitude: number } | null;
+  vesselName: string;
+  onFootprint?: (footprint: SatelliteFootprint | null) => void;
+}
+
+function SatelliteVerificationResult({ verification, vesselPosition, vesselName, onFootprint }: SatVrProps) {
   const [liveVr, setLiveVr] = useState(verification);
+  const [footprintEmitted, setFootprintEmitted] = useState(false);
 
   // Poll for satellite next-pass completion
   useEffect(() => {
@@ -400,6 +416,20 @@ function SatelliteVerificationResult({ verification }: { verification: Verificat
     }, 5000);
     return () => clearInterval(interval);
   }, [liveVr.id, liveVr.status, liveVr.asset_type]);
+
+  // Emit satellite footprint on map when pass completes
+  useEffect(() => {
+    if (liveVr.status === "completed" && !footprintEmitted && vesselPosition && onFootprint) {
+      const satData = liveVr.result_notes ? (() => { try { return JSON.parse(liveVr.result_notes); } catch { return null; } })() : null;
+      onFootprint({
+        center: [vesselPosition.longitude, vesselPosition.latitude],
+        satellite: satData?.next_pass?.satellite || "Sentinel-2B",
+        timestamp: satData?.next_pass?.acquired || new Date().toISOString(),
+        vesselName,
+      });
+      setFootprintEmitted(true);
+    }
+  }, [liveVr.status, footprintEmitted, vesselPosition, vesselName, onFootprint, liveVr.result_notes]);
 
   // Parse satellite-specific notes
   const satData = liveVr.result_notes ? (() => {
@@ -513,6 +543,49 @@ function SatelliteVerificationResult({ verification }: { verification: Verificat
           {!isComplete && (
             <p className="text-[10px] text-amber-400/60 mt-2 italic">Tasking accepted. Awaiting satellite pass...</p>
           )}
+        </div>
+      )}
+
+      {/* Imagery preview card — shown when pass completes */}
+      {isSatellite && isComplete && vesselPosition && (
+        <div className="bg-[#111827] rounded-lg border border-cyan-500/20 overflow-hidden">
+          {/* Simulated imagery thumbnail */}
+          <div className="h-32 bg-gradient-to-br from-cyan-900/30 via-teal-900/20 to-blue-900/30 relative flex items-center justify-center">
+            <div className="absolute inset-0 opacity-20" style={{
+              backgroundImage: "linear-gradient(45deg, transparent 30%, rgba(6,182,212,0.1) 50%, transparent 70%)",
+              backgroundSize: "20px 20px",
+            }} />
+            <div className="text-center z-10">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mx-auto text-cyan-400 mb-1.5">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+              </svg>
+              <p className="text-[10px] text-cyan-400 font-mono">{vesselPosition.latitude.toFixed(4)}N, {Math.abs(vesselPosition.longitude).toFixed(4)}{vesselPosition.longitude >= 0 ? "E" : "W"}</p>
+              <p className="text-[9px] text-cyan-500/60 mt-0.5">10m True Color Composite</p>
+            </div>
+            {/* Crosshair overlay */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-8 h-px bg-cyan-500/30" />
+              <div className="absolute h-8 w-px bg-cyan-500/30" />
+            </div>
+            {/* Corner brackets */}
+            <div className="absolute top-2 left-2 w-3 h-3 border-t border-l border-cyan-500/40" />
+            <div className="absolute top-2 right-2 w-3 h-3 border-t border-r border-cyan-500/40" />
+            <div className="absolute bottom-2 left-2 w-3 h-3 border-b border-l border-cyan-500/40" />
+            <div className="absolute bottom-2 right-2 w-3 h-3 border-b border-r border-cyan-500/40" />
+          </div>
+          <div className="p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] text-cyan-400 font-semibold uppercase tracking-wider">Satellite Imagery</span>
+              <span className="text-[9px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.5 rounded">new</span>
+            </div>
+            <p className="text-[10px] text-slate-400">
+              {satData?.next_pass?.satellite || "Sentinel-2B"} capture of vessel area. Footprint highlighted on map.
+            </p>
+            <p className="text-[9px] text-slate-600 mt-1 font-mono">
+              ref: {liveVr.result_media_ref || "s2_tile.tif"}
+            </p>
+          </div>
         </div>
       )}
     </div>
