@@ -40,34 +40,89 @@ function geofenceColor(zoneType: string): string {
   }
 }
 
-/** Returns an SVG path `d` attribute and viewBox for each vessel type. */
-function vesselSvgPath(vesselType: string): { d: string; viewBox: string } {
+/**
+ * Returns top-down ship silhouette SVG paths for each vessel type.
+ * Uses a tall narrow viewBox (10x28) so ships render with realistic proportions.
+ * Three layers: hull (colored), deck (subtle), bridge (bright white block).
+ */
+function vesselSvgPaths(vesselType: string): {
+  hull: string; deck: string; bridge: string; viewBox: string; ratio: number;
+} {
+  // ratio = width / height for the marker element
   switch (vesselType) {
-    // Cargo: rectangle with pointed bow (container ship)
+    // Cargo / container: long boxy hull, container bays, bridge block at stern
     case "cargo":
-      return { d: "M6 22 L6 6 L12 2 L18 6 L18 22 Z", viewBox: "0 0 24 24" };
-    // Tanker: wider rectangle with rounded bow
+      return {
+        hull: "M5 0 L2.5 3 L1.5 6 L1.5 25 L2.5 28 L7.5 28 L8.5 25 L8.5 6 L7.5 3 Z",
+        deck: "M2.5 5.5 L7.5 5.5 L7.5 8 L2.5 8 Z M2.5 9 L7.5 9 L7.5 11.5 L2.5 11.5 Z M2.5 12.5 L7.5 12.5 L7.5 15 L2.5 15 Z M2.5 16 L7.5 16 L7.5 18.5 L2.5 18.5 Z",
+        bridge: "M2 21 L8 21 L8 26.5 L2 26.5 Z",
+        viewBox: "0 0 10 28",
+        ratio: 0.36,
+      };
+    // Tanker: wide rounded bow, center pipe, bridge at stern
     case "tanker":
-      return { d: "M4 22 L4 8 Q4 4 12 2 Q20 4 20 8 L20 22 Z", viewBox: "0 0 24 24" };
-    // Fishing: diamond shape
+      return {
+        hull: "M5 0 Q1 4 1 7 L1 25 L2 28 L8 28 L9 25 L9 7 Q9 4 5 0 Z",
+        deck: "M4 6 L6 6 L6 20 L4 20 Z",
+        bridge: "M2 22 L8 22 L8 27 L2 27 Z",
+        viewBox: "0 0 10 28",
+        ratio: 0.36,
+      };
+    // Fishing: shorter wider hull, wheelhouse forward, boom line aft
     case "fishing":
-      return { d: "M12 2 L20 12 L12 22 L4 12 Z", viewBox: "0 0 24 24" };
-    // Tug: small square with pointed top
+      return {
+        hull: "M5 0 L2 3 L0.5 7 L0.5 18 L2 22 L8 22 L9.5 18 L9.5 7 L8 3 Z",
+        deck: "M4.5 10 L5.5 10 L5.5 19 L4.5 19 Z",
+        bridge: "M2 3.5 L8 3.5 L8 9 L2 9 Z",
+        viewBox: "0 0 10 22",
+        ratio: 0.45,
+      };
+    // Tug: very short & stocky, big wheelhouse
     case "tug":
-      return { d: "M7 20 L7 8 L12 3 L17 8 L17 20 Z", viewBox: "0 0 24 24" };
-    // Passenger: tall narrow rectangle (cruise ship)
+      return {
+        hull: "M5 0 L2 3 L0.5 6 L0.5 14 L2 17 L8 17 L9.5 14 L9.5 6 L8 3 Z",
+        deck: "",
+        bridge: "M1.5 4 L8.5 4 L8.5 12 L1.5 12 Z",
+        viewBox: "0 0 10 17",
+        ratio: 0.59,
+      };
+    // Passenger / cruise: longest hull, massive superstructure, pool deck
     case "passenger":
-      return { d: "M8 22 L8 5 L10 2 L14 2 L16 5 L16 22 Z", viewBox: "0 0 24 24" };
-    // Law enforcement / military: triangle with flat base (patrol boat)
+      return {
+        hull: "M5 0 L2.5 2 L1 5 L1 27 L2 30 L8 30 L9 27 L9 5 L7.5 2 Z",
+        deck: "M2 3.5 L8 3.5 L8 25 L2 25 Z",
+        bridge: "M2.5 3.5 L7.5 3.5 L7.5 8 L2.5 8 Z",
+        viewBox: "0 0 10 30",
+        ratio: 0.33,
+      };
+    // Military / law enforcement: narrow aggressive hull, weapons deck
     case "law_enforcement":
     case "military":
-      return { d: "M12 2 L22 20 L2 20 Z", viewBox: "0 0 24 24" };
-    // Pleasure craft: circle
+      return {
+        hull: "M5 0 L3 3 L2 7 L1.5 24 L3 28 L7 28 L8.5 24 L8 7 L7 3 Z",
+        deck: "M3.5 7 L6.5 7 L6.5 11 L3.5 11 Z M3.5 14 L6.5 14 L6.5 16 L3.5 16 Z",
+        bridge: "M3 18 L7 18 L7 24 L3 24 Z",
+        viewBox: "0 0 10 28",
+        ratio: 0.36,
+      };
+    // Pleasure / yacht: small sleek hull, open cockpit aft
     case "pleasure":
-      return { d: "M12 2 A10 10 0 1 1 12 22 A10 10 0 1 1 12 2 Z", viewBox: "0 0 24 24" };
-    // Default / other: original arrow/chevron
+      return {
+        hull: "M5 0 L2.5 3 L1.5 7 L1.5 19 L3 23 L7 23 L8.5 19 L8.5 7 L7.5 3 Z",
+        deck: "",
+        bridge: "M2.5 14 L7.5 14 L7.5 21 L2.5 21 Z",
+        viewBox: "0 0 10 23",
+        ratio: 0.43,
+      };
+    // Default / other: generic vessel
     default:
-      return { d: "M12 2 L4 20 L12 15 L20 20 Z", viewBox: "0 0 24 24" };
+      return {
+        hull: "M5 0 L2 4 L1.5 8 L1.5 24 L3 28 L7 28 L8.5 24 L8.5 8 L8 4 Z",
+        deck: "",
+        bridge: "M2.5 20 L7.5 20 L7.5 26 L2.5 26 Z",
+        viewBox: "0 0 10 28",
+        ratio: 0.36,
+      };
   }
 }
 
@@ -164,11 +219,12 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
       const score = vessel.risk_score ?? 0;
       const color = vesselColor(vessel.risk_score);
       const isSelected = vessel.id === selectedVesselId;
-      const size = isSelected ? 22 : score >= 45 ? 18 : 14;
+      const h = isSelected ? 42 : score >= 45 ? 34 : 26;
       const course = vessel.latest_position.course_over_ground ?? 0;
-      const strokeColor = isSelected ? "#e2e8f0" : "rgba(0,0,0,0.5)";
-      const strokeWidth = isSelected ? 1.5 : 1;
-      const { d: pathD, viewBox } = vesselSvgPath(vessel.vessel_type ?? "other");
+      const strokeColor = isSelected ? "#cbd5e1" : "rgba(0,0,0,0.7)";
+      const strokeWidth = isSelected ? 1.2 : 0.6;
+      const { hull, deck, bridge, viewBox, ratio } = vesselSvgPaths(vessel.vessel_type ?? "other");
+      const w = Math.round(h * ratio);
 
       let markerData = markersRef.current[vessel.id];
 
@@ -191,14 +247,18 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
 
       const { marker, el } = markerData;
 
-      el.style.width = `${size}px`;
-      el.style.height = `${size}px`;
-      el.style.filter = `drop-shadow(0 0 ${score >= 70 ? "6" : score >= 45 ? "4" : "2"}px ${color}${score >= 45 ? "cc" : "80"})`;
+      el.style.width = `${w}px`;
+      el.style.height = `${h}px`;
+      const glowSize = score >= 70 ? 8 : score >= 45 ? 5 : 3;
+      const glowAlpha = score >= 45 ? "cc" : "80";
 
       el.innerHTML = `
-      <div style="width: 100%; height: 100%; ${score >= 70 ? 'animation: pulse 2s infinite;' : ''}">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${size}" height="${size}" style="transform: rotate(${course}deg); transition: transform 0.5s ease;">
-          <path d="${pathD}" fill="${color}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round" style="transition: fill 0.5s ease;"/>
+      <div style="width:100%;height:100%;${score >= 70 ? 'animation:pulse 2s infinite;' : ''}">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${w}" height="${h}"
+             style="transform:rotate(${course}deg);transition:transform 0.5s ease;filter:drop-shadow(0 0 ${glowSize}px ${color}${glowAlpha})">
+          <path d="${hull}" fill="${color}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round"/>
+          ${deck ? `<path d="${deck}" fill="rgba(255,255,255,0.10)" stroke="none"/>` : ""}
+          <path d="${bridge}" fill="rgba(255,255,255,0.30)" stroke="rgba(255,255,255,0.12)" stroke-width="0.3"/>
         </svg>
       </div>`;
 
@@ -502,12 +562,17 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
 }
 
 function LegendItem({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
+  const legendHull = "M5 0 L2 4 L1.5 8 L1.5 24 L3 28 L7 28 L8.5 24 L8.5 8 L8 4 Z";
+  const legendBridge = "M2.5 20 L7.5 20 L7.5 26 L2.5 26 Z";
   return (
     <div className="flex items-center gap-2.5">
       {dashed ? (
         <div className="w-4 h-0 border-t-[1.5px] border-dashed" style={{ borderColor: color }} />
       ) : (
-        <div className="w-2 h-2 rounded-full shadow-sm" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}60` }} />
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 28" width="5" height="14" style={{ filter: `drop-shadow(0 0 3px ${color}80)` }}>
+          <path d={legendHull} fill={color} stroke="rgba(0,0,0,0.5)" strokeWidth="0.6" strokeLinejoin="round" />
+          <path d={legendBridge} fill="rgba(255,255,255,0.3)" stroke="none" />
+        </svg>
       )}
       <span className="text-slate-400">{label}</span>
     </div>

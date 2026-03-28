@@ -3,6 +3,9 @@ Composite risk scoring engine.
 
 Combines anomaly signals, vessel metadata quality, proximity factors,
 and inspection history into a 0-100 risk score with explanation.
+
+Vessel-type-aware: explanations include type context so operators
+understand why a fishing boat has lower severity for loitering.
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ from app.models.domain import (
     VesselORM, AnomalySignalSchema, ActionRecommendation,
     RiskAssessmentSchema, AnomalyType
 )
+from app.services.vessel_profiles import get_profile
 
 
 # ── Configurable Weights ───────────────────────────────
@@ -23,8 +27,8 @@ SIGNAL_WEIGHTS: dict[str, float] = {
     AnomalyType.HEADING_ANOMALY: 15,
     AnomalyType.AIS_GAP: 20,
     AnomalyType.ZONE_LINGERING: 18,
-    AnomalyType.ROUTE_DEVIATION: 15,
-    AnomalyType.TYPE_MISMATCH: 12,
+    AnomalyType.ROUTE_DEVIATION: 20,             # Off learned corridor — strong contextual signal
+    AnomalyType.TYPE_MISMATCH: 16,               # Behavior contradicts declared type
     AnomalyType.COLLISION_RISK: 28,              # Highest weight — immediate safety concern
     AnomalyType.KINEMATIC_IMPLAUSIBILITY: 22,    # Strong indicator of spoofing or bad data
     AnomalyType.STATISTICAL_OUTLIER: 14,         # Contextual — less definitive alone
@@ -123,12 +127,31 @@ def generate_explanation(
     score: float,
     action: str,
 ) -> str:
-    """Generate human-readable explanation of the risk assessment."""
+    """Generate human-readable explanation of the risk assessment.
+
+    Includes vessel type context so operators understand severity adjustments.
+    """
     parts = []
+
+    profile = get_profile(vessel.vessel_type)
+    vtype = vessel.vessel_type or "unknown"
+
+    # Vessel type context header
+    has_adjusted = any(
+        s.details and s.details.get("severity_mult") and s.details["severity_mult"] != 1.0
+        for s in signals
+    )
+    if has_adjusted:
+        parts.append(f"[{vtype} profile applied — thresholds adjusted for vessel type.]")
 
     if signals:
         signal_descriptions = [s.description for s in sorted(signals, key=lambda s: s.severity, reverse=True)]
         parts.append("Anomaly signals detected: " + "; ".join(signal_descriptions) + ".")
+
+    # Flag learned-baseline signals
+    learned_signals = [s for s in signals if s.details and s.details.get("source") == "learned_baseline"]
+    if learned_signals:
+        parts.append(f"({len(learned_signals)} signal(s) from historical pattern analysis.)")
 
     if "missing" in metadata_note.lower() or "incomplete" in metadata_note.lower():
         parts.append(metadata_note + ".")

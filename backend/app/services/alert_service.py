@@ -3,6 +3,7 @@
 from __future__ import annotations
 from datetime import datetime
 import json
+import logging
 import uuid
 
 from sqlalchemy.orm import Session
@@ -14,13 +15,19 @@ from app.models.domain import (
 )
 from app.services.anomaly_detection import run_anomaly_detection, compute_regional_stats
 from app.services.risk_scoring import compute_risk_assessment
+from app.services.pattern_learning import get_learned_baseline, refresh_baseline
+
+logger = logging.getLogger("harboros.alerts")
 
 
 def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
     """Run detection + scoring for all vessels, create/update alerts.
 
-    Now includes regional statistical context and nearby-vessel data for
-    collision risk analysis per Stach et al. (2023) survey recommendations.
+    Includes:
+    - Vessel-type-aware anomaly detection (behavior profiles)
+    - Regional statistical context (outlier detection)
+    - Nearby-vessel data (collision risk)
+    - Learned historical baselines (route deviation, pattern matching)
     """
     vessels = db.query(VesselORM).all()
     geofences = db.query(GeofenceORM).all()
@@ -34,6 +41,12 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
         .all()
     )
     regional_stats = compute_regional_stats(all_recent_positions)
+
+    # Load or refresh learned baselines from Parquet archives + SQLite
+    learned = get_learned_baseline()
+    if learned.last_refresh is None:
+        logger.info("Initializing learned baselines from historical data...")
+        refresh_baseline(db)
 
     # Pre-compute latest positions for all vessels (for collision risk)
     latest_positions = {}
@@ -66,6 +79,7 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
             vessel, positions, geofences,
             regional_stats=regional_stats,
             nearby_vessels=nearby_list,
+            learned_baseline=learned,
         )
 
         assessment = compute_risk_assessment(vessel, signals)

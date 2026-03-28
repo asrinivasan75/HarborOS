@@ -760,3 +760,33 @@ def run_archive(
     """Manually trigger archival of old position data to Parquet."""
     from app.services.archive_service import archive_old_positions
     return archive_old_positions(retention_minutes=retention_minutes, db=db)
+
+
+# ── Learned Baselines ────────────────────────────────
+
+@router.get("/baselines")
+def get_baselines():
+    """View learned behavioral baselines (per-region, per-vessel-type stats)."""
+    from app.services.pattern_learning import get_learned_baseline
+    baseline = get_learned_baseline()
+    return baseline.summary()
+
+
+@router.post("/baselines/refresh")
+def refresh_baselines(db: Session = Depends(get_db)):
+    """Force refresh learned baselines from Parquet archives + SQLite."""
+    from app.services.pattern_learning import refresh_baseline
+    baseline = refresh_baseline(db)
+    return baseline.summary()
+
+
+# ── Vessel Profiles ──────────────────────────────────
+
+@router.get("/vessel-profiles")
+def get_vessel_profiles():
+    """View vessel type behavior profiles used by anomaly detection."""
+    from app.services.vessel_profiles import VESSEL_PROFILES, _DEFAULT_PROFILE
+    return {
+        "profiles": VESSEL_PROFILES,
+        "default": _DEFAULT_PROFILE,
+    }

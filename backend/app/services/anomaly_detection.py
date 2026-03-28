@@ -3,6 +3,12 @@ Heuristic-based anomaly detection engine.
 
 Each detector is a function that takes vessel data and returns anomaly signals.
 Modular: add new detectors by adding functions to DETECTORS list.
+
+Vessel-type-aware: detectors use per-type behavior profiles to adjust
+thresholds (e.g. fishing boats loitering is normal, cargo ships is not).
+
+History-aware: detectors can compare against learned baselines from
+archived Parquet data to flag route deviations and behavioral outliers.
 """
 
 from __future__ import annotations
@@ -17,6 +23,8 @@ from app.models.domain import (
     VesselORM, PositionReportORM, GeofenceORM,
     AnomalySignalSchema, AnomalyType
 )
+from app.services.vessel_profiles import get_profile
+from app.services.pattern_learning import LearnedBaseline
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -48,11 +56,19 @@ def detect_geofence_breach(
     vessel: VesselORM,
     positions: list[PositionReportORM],
     geofences: list[GeofenceORM],
+    **kwargs,
 ) -> list[AnomalySignalSchema]:
-    """Check if vessel has entered any restricted geofence zones."""
+    """Check if vessel has entered any restricted geofence zones.
+
+    Severity is adjusted by vessel type: tugs/law enforcement near restricted
+    zones is expected, cargo ships or fishing vessels less so.
+    """
     signals = []
     if not positions:
         return signals
+
+    profile = get_profile(vessel.vessel_type)
+    zone_mult = profile["zone_severity_mult"]
 
     for gf in geofences:
         if gf.zone_type not in ("restricted", "security", "environmental"):
@@ -62,16 +78,18 @@ def detect_geofence_breach(
         if not coords:
             continue
 
-        for pos in positions[-10:]:  # Check recent positions
+        for pos in positions[-10:]:
             if point_in_polygon(pos.latitude, pos.longitude, coords):
-                severity = 0.9 if gf.severity == "high" else 0.6
+                base_severity = 0.9 if gf.severity == "high" else 0.6
+                severity = min(0.95, base_severity * zone_mult)
                 signals.append(AnomalySignalSchema(
                     anomaly_type=AnomalyType.GEOFENCE_BREACH,
                     severity=severity,
-                    description=f"Vessel entered {gf.zone_type} zone: {gf.name}",
-                    details={"geofence_id": gf.id, "zone_type": gf.zone_type}
+                    description=f"{vessel.vessel_type or 'Vessel'} entered {gf.zone_type} zone: {gf.name}",
+                    details={"geofence_id": gf.id, "zone_type": gf.zone_type,
+                             "vessel_type": vessel.vessel_type, "severity_mult": zone_mult}
                 ))
-                break  # One signal per geofence
+                break
     return signals
 
 
@@ -80,47 +98,69 @@ def detect_loitering(
     positions: list[PositionReportORM],
     **kwargs,
 ) -> list[AnomalySignalSchema]:
-    """Detect if vessel is stationary or near-stationary for too long."""
+    """Detect if vessel is stationary or near-stationary for too long.
+
+    Threshold and severity are adjusted by vessel type: fishing boats and
+    tugs are expected to loiter, cargo ships and passenger vessels are not.
+    """
     if len(positions) < 3:
         return []
 
-    # Check last N positions for low speed + small area
+    profile = get_profile(vessel.vessel_type)
+    tolerance_min = profile["loiter_tolerance_min"]
+    severity_mult = profile["loiter_severity_mult"]
+
     recent = positions[-20:]
     slow_count = sum(1 for p in recent if p.speed_over_ground is not None and p.speed_over_ground < 1.0)
 
     if slow_count < 3:
         return []
 
-    # Calculate bounding box of recent positions
     lats = [p.latitude for p in recent]
     lons = [p.longitude for p in recent]
     spread = haversine_distance(min(lats), min(lons), max(lats), max(lons))
 
-    if spread > 0.5:  # More than 0.5nm spread means actually moving
+    if spread > 0.5:
         return []
 
-    # Duration of loitering
     time_span = (recent[-1].timestamp - recent[0].timestamp).total_seconds() / 60
-    if time_span < 8:  # Less than 8 min is normal
+    if time_span < tolerance_min:
         return []
 
-    severity = min(0.9, 0.3 + (time_span / 120))  # Scale with duration
+    base_severity = min(0.9, 0.3 + (time_span / 120))
+    severity = min(0.95, base_severity * severity_mult)
+
+    if severity < 0.05:
+        return []
+
+    vtype = vessel.vessel_type or "unknown"
     return [AnomalySignalSchema(
         anomaly_type=AnomalyType.LOITERING,
         severity=severity,
-        description=f"Vessel loitering for {int(time_span)} minutes in a {spread:.2f}nm area",
-        details={"duration_minutes": int(time_span), "spread_nm": round(spread, 3)}
+        description=f"{vtype} loitering for {int(time_span)} min in {spread:.2f}nm area (tolerance: {tolerance_min} min for {vtype})",
+        details={"duration_minutes": int(time_span), "spread_nm": round(spread, 3),
+                 "vessel_type": vtype, "tolerance_min": tolerance_min,
+                 "severity_mult": severity_mult}
     )]
 
 
 def detect_speed_anomaly(
     vessel: VesselORM,
     positions: list[PositionReportORM],
+    learned_baseline: LearnedBaseline | None = None,
     **kwargs,
 ) -> list[AnomalySignalSchema]:
-    """Detect unusual speed changes (rapid acceleration/deceleration)."""
+    """Detect unusual speed changes (rapid acceleration/deceleration).
+
+    Uses vessel type profile for the speed-change threshold: fishing boats
+    and military vessels have higher thresholds (speed changes are normal).
+    Optionally compares against learned speed distributions.
+    """
     if len(positions) < 3:
         return []
+
+    profile = get_profile(vessel.vessel_type)
+    speed_threshold = profile["speed_delta_threshold"]
 
     speeds = [(p.timestamp, p.speed_over_ground) for p in positions if p.speed_over_ground is not None]
     if len(speeds) < 3:
@@ -130,20 +170,44 @@ def detect_speed_anomaly(
     max_change = 0
     for i in range(1, len(speeds)):
         delta = abs(speeds[i][1] - speeds[i-1][1])
-        if delta > 3:  # >3 knot change
+        if delta > speed_threshold:
             large_changes += 1
             max_change = max(max_change, delta)
 
-    if large_changes < 2:
-        return []
+    signals = []
 
-    severity = min(0.8, 0.3 + (large_changes * 0.1))
-    return [AnomalySignalSchema(
-        anomaly_type=AnomalyType.SPEED_ANOMALY,
-        severity=severity,
-        description=f"Erratic speed changes detected ({large_changes} rapid changes, max {max_change:.1f} kt delta)",
-        details={"rapid_changes": large_changes, "max_delta_knots": round(max_change, 1)}
-    )]
+    if large_changes >= 2:
+        severity = min(0.8, 0.3 + (large_changes * 0.1))
+        signals.append(AnomalySignalSchema(
+            anomaly_type=AnomalyType.SPEED_ANOMALY,
+            severity=severity,
+            description=f"Erratic speed changes ({large_changes} rapid changes, max {max_change:.1f} kt delta, threshold: {speed_threshold} kt for {vessel.vessel_type or 'unknown'})",
+            details={"rapid_changes": large_changes, "max_delta_knots": round(max_change, 1),
+                     "threshold_knots": speed_threshold, "vessel_type": vessel.vessel_type}
+        ))
+
+    # Check against learned speed distribution if available
+    if learned_baseline:
+        baseline = learned_baseline.get_baseline(vessel.region, vessel.vessel_type)
+        if baseline and baseline["sample_count"] >= 20:
+            current_speeds = [s[1] for s in speeds]
+            avg_speed = sum(current_speeds) / len(current_speeds)
+            learned_mean = baseline["speed_mean"]
+            learned_std = baseline["speed_std"]
+
+            z_score = abs(avg_speed - learned_mean) / learned_std if learned_std > 0.5 else 0
+            if z_score > 2.5:
+                severity = min(0.75, 0.3 + (z_score - 2.5) * 0.15)
+                signals.append(AnomalySignalSchema(
+                    anomaly_type=AnomalyType.SPEED_ANOMALY,
+                    severity=severity,
+                    description=f"Speed deviates from learned pattern: avg {avg_speed:.1f} kt vs historical {learned_mean:.1f}±{learned_std:.1f} kt for {vessel.vessel_type or 'unknown'} in {vessel.region or 'region'}",
+                    details={"avg_speed": round(avg_speed, 1), "learned_mean": learned_mean,
+                             "learned_std": learned_std, "z_score": round(z_score, 2),
+                             "source": "learned_baseline"}
+                ))
+
+    return signals
 
 
 def detect_heading_anomaly(
@@ -151,9 +215,17 @@ def detect_heading_anomaly(
     positions: list[PositionReportORM],
     **kwargs,
 ) -> list[AnomalySignalSchema]:
-    """Detect unusual heading changes (circling, erratic course)."""
+    """Detect unusual heading changes (circling, erratic course).
+
+    Fishing boats and tugs make frequent course changes normally — their
+    threshold for "large turn" is much higher than cargo or passenger vessels.
+    """
     if len(positions) < 5:
         return []
+
+    profile = get_profile(vessel.vessel_type)
+    turn_threshold = profile["heading_change_deg"]
+    severity_mult = profile["heading_severity_mult"]
 
     headings = [p.course_over_ground for p in positions if p.course_over_ground is not None]
     if len(headings) < 5:
@@ -165,19 +237,27 @@ def detect_heading_anomaly(
         delta = abs(headings[i] - headings[i-1])
         if delta > 180:
             delta = 360 - delta
-        if delta > 30:
+        if delta > turn_threshold:
             large_turns += 1
         total_turn += delta
 
     if large_turns < 3:
         return []
 
-    severity = min(0.7, 0.2 + (large_turns * 0.1))
+    base_severity = min(0.7, 0.2 + (large_turns * 0.1))
+    severity = min(0.85, base_severity * severity_mult)
+
+    if severity < 0.05:
+        return []
+
+    vtype = vessel.vessel_type or "unknown"
     return [AnomalySignalSchema(
         anomaly_type=AnomalyType.HEADING_ANOMALY,
         severity=severity,
-        description=f"Erratic heading changes ({large_turns} large course changes, {total_turn:.0f}° total)",
-        details={"large_turns": large_turns, "total_turn_degrees": round(total_turn, 0)}
+        description=f"Erratic heading changes ({large_turns} turns >{turn_threshold}° for {vtype}, {total_turn:.0f}° total)",
+        details={"large_turns": large_turns, "total_turn_degrees": round(total_turn, 0),
+                 "turn_threshold_deg": turn_threshold, "vessel_type": vtype,
+                 "severity_mult": severity_mult}
     )]
 
 
@@ -186,14 +266,21 @@ def detect_ais_gap(
     positions: list[PositionReportORM],
     **kwargs,
 ) -> list[AnomalySignalSchema]:
-    """Detect gaps in AIS transmission (possible intentional dark period)."""
+    """Detect gaps in AIS transmission (possible intentional dark period).
+
+    Military and fishing vessels have longer normal gaps.
+    Passenger vessels should transmit constantly.
+    """
     if len(positions) < 2:
         return []
+
+    profile = get_profile(vessel.vessel_type)
+    gap_tolerance = profile["ais_gap_tolerance_min"]
 
     gaps = []
     for i in range(1, len(positions)):
         gap = (positions[i].timestamp - positions[i-1].timestamp).total_seconds() / 60
-        if gap > 10:  # >10 minute gap
+        if gap > gap_tolerance:
             gaps.append(gap)
 
     if not gaps:
@@ -201,11 +288,13 @@ def detect_ais_gap(
 
     max_gap = max(gaps)
     severity = min(0.85, 0.4 + (max_gap / 60) * 0.3)
+    vtype = vessel.vessel_type or "unknown"
     return [AnomalySignalSchema(
         anomaly_type=AnomalyType.AIS_GAP,
         severity=severity,
-        description=f"AIS transmission gap detected ({int(max_gap)} minute gap, {len(gaps)} total gaps)",
-        details={"max_gap_minutes": int(max_gap), "total_gaps": len(gaps)}
+        description=f"AIS gap: {int(max_gap)} min gap ({len(gaps)} gaps, tolerance: {gap_tolerance} min for {vtype})",
+        details={"max_gap_minutes": int(max_gap), "total_gaps": len(gaps),
+                 "gap_tolerance_min": gap_tolerance, "vessel_type": vtype}
     )]
 
 
@@ -513,6 +602,113 @@ def detect_collision_risk(
     return signals
 
 
+# ── Profile-Aware Detectors ───────────────────────────
+
+def detect_route_deviation(
+    vessel: VesselORM,
+    positions: list[PositionReportORM],
+    learned_baseline: LearnedBaseline | None = None,
+    **kwargs,
+) -> list[AnomalySignalSchema]:
+    """Detect when a vessel is operating outside learned route corridors.
+
+    Uses historical position density grids built from archived Parquet data.
+    Flags vessels that are far from any historically observed traffic for
+    their type in this region.
+    """
+    if not learned_baseline or len(positions) < 3:
+        return []
+
+    recent = positions[-5:]
+    off_count = 0
+    max_dist = 0.0
+
+    for pos in recent:
+        is_off, dist = learned_baseline.is_off_corridor(
+            pos.latitude, pos.longitude, vessel.region, vessel.vessel_type
+        )
+        if is_off:
+            off_count += 1
+            max_dist = max(max_dist, dist)
+
+    if off_count < 2:
+        return []
+
+    severity = min(0.8, 0.3 + (off_count / len(recent)) * 0.4 + (max_dist / 20) * 0.1)
+    vtype = vessel.vessel_type or "unknown"
+    return [AnomalySignalSchema(
+        anomaly_type=AnomalyType.ROUTE_DEVIATION,
+        severity=severity,
+        description=f"{vtype} operating outside learned route corridor ({off_count}/{len(recent)} positions off-track, {max_dist:.0f} cells from nearest corridor)",
+        details={"off_corridor_positions": off_count, "total_checked": len(recent),
+                 "max_distance_cells": round(max_dist, 1), "vessel_type": vtype,
+                 "source": "learned_baseline"}
+    )]
+
+
+def detect_type_mismatch(
+    vessel: VesselORM,
+    positions: list[PositionReportORM],
+    learned_baseline: LearnedBaseline | None = None,
+    **kwargs,
+) -> list[AnomalySignalSchema]:
+    """Detect when a vessel's behavior doesn't match its declared type.
+
+    A vessel registered as 'cargo' but behaving like a fishing boat (low speed,
+    erratic heading, loitering) may be misidentified or deliberately disguised.
+    Compares vessel behavior against learned baselines for its declared type.
+    """
+    if len(positions) < 10:
+        return []
+
+    profile = get_profile(vessel.vessel_type)
+    expected_lo, expected_hi = profile["speed_range"]
+
+    speeds = [p.speed_over_ground for p in positions if p.speed_over_ground is not None]
+    headings = [p.course_over_ground for p in positions if p.course_over_ground is not None]
+
+    if len(speeds) < 5:
+        return []
+
+    avg_speed = sum(speeds) / len(speeds)
+    mismatch_factors = []
+
+    # Speed mismatch: consistently outside expected range
+    if avg_speed < expected_lo * 0.5 and expected_lo > 2:
+        mismatch_factors.append(f"avg speed {avg_speed:.1f} kt (expected {expected_lo}-{expected_hi} kt)")
+    elif avg_speed > expected_hi * 1.5:
+        mismatch_factors.append(f"avg speed {avg_speed:.1f} kt (expected {expected_lo}-{expected_hi} kt)")
+
+    # Heading variance mismatch
+    if len(headings) >= 5:
+        heading_changes = []
+        for i in range(1, len(headings)):
+            delta = abs(headings[i] - headings[i - 1])
+            if delta > 180:
+                delta = 360 - delta
+            heading_changes.append(delta)
+        avg_change = sum(heading_changes) / len(heading_changes) if heading_changes else 0
+
+        # High heading variance for a type that should be steady (cargo, tanker, passenger)
+        if vessel.vessel_type in ("cargo", "tanker", "passenger") and avg_change > 40:
+            mismatch_factors.append(f"avg heading change {avg_change:.0f}° (unusual for {vessel.vessel_type})")
+        # Low heading variance for a type that should be erratic (fishing)
+        elif vessel.vessel_type == "fishing" and avg_change < 5 and avg_speed > 10:
+            mismatch_factors.append(f"steady course at {avg_speed:.1f} kt (unusual for fishing)")
+
+    if not mismatch_factors:
+        return []
+
+    severity = min(0.7, 0.3 + len(mismatch_factors) * 0.2)
+    return [AnomalySignalSchema(
+        anomaly_type=AnomalyType.TYPE_MISMATCH,
+        severity=severity,
+        description=f"Behavior doesn't match declared type '{vessel.vessel_type}': {'; '.join(mismatch_factors)}",
+        details={"vessel_type": vessel.vessel_type, "mismatch_factors": mismatch_factors,
+                 "avg_speed": round(avg_speed, 1)}
+    )]
+
+
 # ── Detection Engine ───────────────────────────────────
 
 # Detectors that only need vessel + positions + geofences
@@ -525,6 +721,12 @@ BASIC_DETECTORS = [
     detect_zone_lingering,
     detect_kinematic_implausibility,
     detect_dark_vessel,
+]
+
+# Detectors that use learned historical baselines
+LEARNED_DETECTORS = [
+    detect_route_deviation,
+    detect_type_mismatch,
 ]
 
 
@@ -561,6 +763,7 @@ def run_anomaly_detection(
     geofences: list[GeofenceORM],
     regional_stats: dict | None = None,
     nearby_vessels: list[tuple] | None = None,
+    learned_baseline: LearnedBaseline | None = None,
 ) -> list[AnomalySignalSchema]:
     """Run all anomaly detectors against a vessel and return combined signals.
 
@@ -570,13 +773,28 @@ def run_anomaly_detection(
         geofences: Active geofence zones
         regional_stats: Pre-computed regional statistics for outlier detection
         nearby_vessels: List of (id, lat, lon, sog, cog, name) for collision risk
+        learned_baseline: Historical baselines from archived data
     """
     all_signals = []
 
-    # Run basic detectors
+    # Run basic detectors (vessel-type-aware via profiles)
     for detector in BASIC_DETECTORS:
         try:
-            signals = detector(vessel=vessel, positions=positions, geofences=geofences)
+            signals = detector(
+                vessel=vessel, positions=positions, geofences=geofences,
+                learned_baseline=learned_baseline,
+            )
+            all_signals.extend(signals)
+        except Exception:
+            continue
+
+    # Run learned-baseline detectors (route deviation, type mismatch)
+    for detector in LEARNED_DETECTORS:
+        try:
+            signals = detector(
+                vessel=vessel, positions=positions,
+                learned_baseline=learned_baseline,
+            )
             all_signals.extend(signals)
         except Exception:
             continue
