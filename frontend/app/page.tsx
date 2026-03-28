@@ -5,6 +5,7 @@ import Header from "@/app/components/Header";
 import AlertFeed from "@/app/components/AlertFeed";
 import MapView from "@/app/components/MapView";
 import VesselDetailPanel from "@/app/components/VesselDetail";
+import DemoMode from "@/app/components/DemoMode";
 import { api } from "@/app/lib/api";
 import type { Vessel, VesselDetail, Alert, Geofence, IngestionStatus, Region } from "@/app/lib/api";
 
@@ -213,13 +214,21 @@ export default function Dashboard() {
           onSelectAlert={handleSelectAlert}
           onLoadMore={handleLoadMoreAlerts}
         />
-        <MapView
-          vessels={vessels}
-          geofences={geofences}
-          selectedVesselId={selectedVessel?.id ?? null}
-          onSelectVessel={handleSelectVessel}
-          flyTo={mapTarget}
-        />
+        <div className="flex-1 relative">
+          <MapView
+            vessels={vessels}
+            geofences={geofences}
+            selectedVesselId={selectedVessel?.id ?? null}
+            onSelectVessel={handleSelectVessel}
+            flyTo={mapTarget}
+          />
+          <DemoMode
+            onFlyTo={(center, zoom) => setMapTarget({ center, zoom })}
+            onSelectVessel={handleSelectVessel}
+            onSelectRegion={handleRegionChange}
+            darkHorizonId="v-dark-horizon"
+          />
+        </div>
         {selectedVessel && (
           <VesselDetailPanel
             vessel={selectedVessel}

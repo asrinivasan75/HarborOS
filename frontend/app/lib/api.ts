@@ -129,6 +129,23 @@ export interface PaginatedResponse<T> {
   offset: number;
 }
 
+export interface AlertAudit {
+  action: string;
+  details: string | null;
+  timestamp: string;
+}
+
+export interface DetectionMetrics {
+  total_alerts: number;
+  active_alerts: number;
+  acknowledged: number;
+  dismissed: number;
+  confirmed_threats: number;
+  false_positives: number;
+  pending_feedback: number;
+  precision: number | null;
+}
+
 // ── API Functions ─────────────────────────────────────
 
 export const api = {
@@ -150,6 +167,18 @@ export const api = {
     return fetchAPI<PaginatedResponse<Alert>>(`/alerts?${params}`);
   },
   getAlertDetail: (id: string) => fetchAPI<Alert>(`/alerts/${id}`),
+  alertAction: (id: string, action: string, notes?: string, feedback?: string) =>
+    fetchAPI<{ id: string; status: string; feedback: string | null }>(`/alerts/${id}/action`, {
+      method: "POST",
+      body: JSON.stringify({ action, notes: notes || null, feedback: feedback || null }),
+    }),
+  getAlertAudit: (id: string) => fetchAPI<AlertAudit[]>(`/alerts/${id}/audit`),
+  getDetectionMetrics: (region?: string) => {
+    const params = new URLSearchParams();
+    if (region) params.set("region", region);
+    const qs = params.toString();
+    return fetchAPI<DetectionMetrics>(`/detection/metrics${qs ? `?${qs}` : ""}`);
+  },
   updateAlert: (id: string, status: string) =>
     fetchAPI(`/alerts/${id}?status=${status}`, { method: "PATCH" }),
   getGeofences: () => fetchAPI<Geofence[]>("/geofences"),
