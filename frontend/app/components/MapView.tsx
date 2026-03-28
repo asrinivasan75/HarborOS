@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { api } from "@/app/lib/api";
@@ -63,10 +63,68 @@ function vesselSvgPath(vesselType: string): { d: string; viewBox: string } {
   }
 }
 
+type BaseMap = "dark" | "satellite";
+
+function buildMapStyle(baseMap: BaseMap): maplibregl.StyleSpecification {
+  if (baseMap === "satellite") {
+    return {
+      version: 8,
+      glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+      sources: {
+        "satellite": {
+          type: "raster",
+          tiles: [
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          ],
+          tileSize: 256,
+          maxzoom: 19,
+          attribution: "&copy; Esri, Maxar, Earthstar Geographics",
+        },
+      },
+      layers: [
+        {
+          id: "satellite",
+          type: "raster",
+          source: "satellite",
+          minzoom: 0,
+          maxzoom: 20,
+        },
+      ],
+    };
+  }
+  return {
+    version: 8,
+    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    sources: {
+      "carto-dark": {
+        type: "raster",
+        tiles: [
+          "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+          "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+          "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+        ],
+        tileSize: 256,
+        maxzoom: 18,
+        attribution: "&copy; CARTO &copy; OpenStreetMap contributors",
+      },
+    },
+    layers: [
+      {
+        id: "carto-dark",
+        type: "raster",
+        source: "carto-dark",
+        minzoom: 0,
+        maxzoom: 20,
+      },
+    ],
+  };
+}
+
 export default function MapView({ vessels, geofences, selectedVesselId, onSelectVessel, flyTo }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const [baseMap, setBaseMap] = useState<BaseMap>("satellite");
 
   const updateMarkers = useCallback(() => {
     const map = mapRef.current;
@@ -125,32 +183,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: {
-        version: 8,
-        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
-        sources: {
-          "carto-dark": {
-            type: "raster",
-            tiles: [
-              "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-              "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-              "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-            ],
-            tileSize: 256,
-            maxzoom: 18,
-            attribution: "&copy; CARTO &copy; OpenStreetMap contributors",
-          },
-        },
-        layers: [
-          {
-            id: "carto-dark",
-            type: "raster",
-            source: "carto-dark",
-            minzoom: 0,
-            maxzoom: 20,
-          },
-        ],
-      },
+      style: buildMapStyle(baseMap),
       center: [-118.265, 33.725],
       zoom: 12.5,
       pitch: 0,
@@ -211,6 +244,38 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
   useEffect(() => {
     updateMarkers();
   }, [updateMarkers]);
+
+  // Switch base map style
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    map.setStyle(buildMapStyle(baseMap));
+    map.once("styledata", () => {
+      map.setCenter(center);
+      map.setZoom(zoom);
+      // Re-add geofences after style change
+      geofences.forEach((gf) => {
+        const color = geofenceColor(gf.zone_type);
+        if (!map.getSource(`geofence-${gf.id}`)) {
+          map.addSource(`geofence-${gf.id}`, {
+            type: "geojson",
+            data: { type: "Feature", geometry: gf.geometry, properties: {} },
+          });
+          map.addLayer({
+            id: `geofence-fill-${gf.id}`, type: "fill", source: `geofence-${gf.id}`,
+            paint: { "fill-color": color, "fill-opacity": 0.1 },
+          });
+          map.addLayer({
+            id: `geofence-line-${gf.id}`, type: "line", source: `geofence-${gf.id}`,
+            paint: { "line-color": color, "line-width": 1.5, "line-dasharray": [4, 2], "line-opacity": 0.6 },
+          });
+        }
+      });
+      updateMarkers();
+    });
+  }, [baseMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!flyTo || !mapRef.current) return;
@@ -295,6 +360,29 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
           <LegendItem color="#3b82f6" label="Shipping Lane" dashed />
           <LegendItem color="#22c55e" label="Anchorage" dashed />
         </div>
+      </div>
+      {/* Base map toggle */}
+      <div className="absolute bottom-4 right-4 bg-[#0d1320]/95 backdrop-blur-md border border-[#1a2235] rounded-xl overflow-hidden shadow-xl shadow-black/30 flex">
+        <button
+          onClick={() => setBaseMap("satellite")}
+          className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+            baseMap === "satellite"
+              ? "bg-blue-500/20 text-blue-400 border-r border-[#1a2235]"
+              : "text-slate-500 hover:text-slate-300 border-r border-[#1a2235]"
+          }`}
+        >
+          Satellite
+        </button>
+        <button
+          onClick={() => setBaseMap("dark")}
+          className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+            baseMap === "dark"
+              ? "bg-blue-500/20 text-blue-400"
+              : "text-slate-500 hover:text-slate-300"
+          }`}
+        >
+          Dark
+        </button>
       </div>
       <style jsx global>{`
         @keyframes pulse {

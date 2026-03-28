@@ -378,9 +378,10 @@ def create_verification_request(
     """Create a mocked verification request (future hardware integration point)."""
     # Simulated asset assignment
     asset_registry = {
-        "camera": {"asset_id": "DCAM-NODE-3", "name": "Dockside Camera Node 3"},
-        "patrol_boat": {"asset_id": "PB-07", "name": "Harbor Patrol 07"},
-        "drone": {"asset_id": "UAV-12", "name": "Surveillance Drone 12"},
+        "camera": {"asset_id": "DCAM-NODE-3", "name": "Dockside Camera Node 3", "eta_min": 4},
+        "patrol_boat": {"asset_id": "PB-07", "name": "Harbor Patrol 07", "eta_min": 12},
+        "drone": {"asset_id": "UAV-12", "name": "Surveillance Drone 12", "eta_min": 8},
+        "satellite": {"asset_id": "SENTINEL-2A", "name": "Sentinel-2A (ESA)", "eta_min": 47},
     }
     asset = asset_registry.get(req.asset_type, asset_registry["camera"])
 
@@ -556,6 +557,18 @@ def archive_stats():
     """Get stats on archived position data (Parquet files)."""
     from app.services.archive_service import get_archive_stats
     return get_archive_stats()
+
+
+# ── Satellite Imagery ──────────────────────────────────
+
+@router.get("/satellite/info")
+def satellite_info():
+    """Get Sentinel-2 satellite constellation info and tile URLs."""
+    from app.data_sources.sentinel_adapter import get_sentinel2_tile_url, get_sentinel2_info
+    return {
+        "tiles": get_sentinel2_tile_url(),
+        "constellation": get_sentinel2_info(),
+    }
 
 
 @router.post("/archive/run")

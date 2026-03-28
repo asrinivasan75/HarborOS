@@ -93,11 +93,13 @@ export default function VesselDetailPanel({ vessel, alertId, onClose }: VesselDe
     }
   }, [alertId]);
 
+  const [verifyAsset, setVerifyAsset] = useState<string>("camera");
+
   const handleVerify = async () => {
     if (!alertId) return;
     setVerifyLoading(true);
     try {
-      const vr = await api.createVerificationRequest(alertId, vessel.id, "camera");
+      const vr = await api.createVerificationRequest(alertId, vessel.id, verifyAsset);
       setVerification(vr);
     } catch (e) {
       console.error("Verification request failed:", e);
@@ -247,17 +249,41 @@ export default function VesselDetailPanel({ vessel, alertId, onClose }: VesselDe
                 Asset: <span className="font-mono text-slate-300">{verification.asset_id}</span> ({verification.asset_type})
               </p>
               <p className="text-[10px] text-slate-500 mt-1.5">
-                Verification task created. Asset dispatched.
+                {verification.asset_type === "satellite"
+                  ? "Satellite tasking accepted. Next pass in ~47 minutes. Imagery will be delivered to the operator console upon acquisition."
+                  : "Verification task created. Asset dispatched."}
               </p>
             </div>
           ) : (
-            <button
-              onClick={handleVerify}
-              disabled={verifyLoading || !alertId}
-              className="w-full py-2.5 px-4 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 hover:border-blue-500/40 disabled:bg-[#111827] disabled:border-[#1a2235] disabled:text-slate-600 text-blue-400 text-sm font-medium rounded-lg transition-all"
-            >
-              {verifyLoading ? "Requesting..." : "Request Verification"}
-            </button>
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { key: "camera", label: "Camera" },
+                  { key: "drone", label: "Drone" },
+                  { key: "patrol_boat", label: "Patrol" },
+                  { key: "satellite", label: "Satellite" },
+                ].map((a) => (
+                  <button
+                    key={a.key}
+                    onClick={() => setVerifyAsset(a.key)}
+                    className={`text-[10px] py-1.5 rounded-md font-medium transition-all ${
+                      verifyAsset === a.key
+                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                        : "bg-[#111827] text-slate-500 border border-[#1a2235] hover:text-slate-300"
+                    }`}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleVerify}
+                disabled={verifyLoading || !alertId}
+                className="w-full py-2.5 px-4 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 hover:border-blue-500/40 disabled:bg-[#111827] disabled:border-[#1a2235] disabled:text-slate-600 text-blue-400 text-sm font-medium rounded-lg transition-all"
+              >
+                {verifyLoading ? "Requesting..." : `Request ${verifyAsset === "satellite" ? "Satellite Pass" : "Verification"}`}
+              </button>
+            </div>
           )}
         </div>
       )}
