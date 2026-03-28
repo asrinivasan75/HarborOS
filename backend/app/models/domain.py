@@ -127,8 +127,24 @@ class AlertORM(Base):
     explanation = Column(Text)
     anomaly_signals_json = Column(Text)  # JSON list of anomaly signal dicts
     operator_notes = Column(Text, nullable=True)
+    feedback = Column(String, nullable=True)  # "confirmed", "false_positive", None
+    feedback_at = Column(DateTime, nullable=True)
 
     vessel = relationship("VesselORM")
+    audit_entries = relationship("AlertAuditORM", back_populates="alert", order_by="AlertAuditORM.timestamp")
+
+
+class AlertAuditORM(Base):
+    """Audit trail for operator actions on alerts."""
+    __tablename__ = "alert_audit"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    alert_id = Column(String, ForeignKey("alerts.id"), index=True)
+    action = Column(String)  # "acknowledged", "dismissed", "pinned", "noted", "feedback", "verification_requested"
+    details = Column(Text, nullable=True)  # JSON or free text
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    alert = relationship("AlertORM", back_populates="audit_entries")
 
 
 class AnomalySignalORM(Base):
@@ -238,9 +254,37 @@ class AlertSchema(BaseModel):
     recommended_action: str
     explanation: str
     anomaly_signals: list[AnomalySignalSchema] = []
+    feedback: Optional[str] = None
+    operator_notes: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class AlertAuditSchema(BaseModel):
+    action: str
+    details: Optional[str] = None
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AlertActionRequest(BaseModel):
+    action: str  # "acknowledge", "dismiss", "pin", "note", "feedback"
+    notes: Optional[str] = None
+    feedback: Optional[str] = None  # "confirmed" or "false_positive"
+
+
+class DetectionMetricsSchema(BaseModel):
+    total_alerts: int
+    active_alerts: int
+    acknowledged: int
+    dismissed: int
+    confirmed_threats: int
+    false_positives: int
+    pending_feedback: int
+    precision: Optional[float] = None  # confirmed / (confirmed + false_positive)
 
 
 class VerificationRequestSchema(BaseModel):

@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.domain import (
-    VesselORM, PositionReportORM, GeofenceORM, AlertORM, VerificationRequestORM,
-    VesselSchema, VesselDetailSchema, GeofenceSchema, AlertSchema,
+    VesselORM, PositionReportORM, GeofenceORM, AlertORM, VerificationRequestORM, AlertAuditORM,
+    VesselSchema, VesselDetailSchema, GeofenceSchema, AlertSchema, AlertAuditSchema,
+    AlertActionRequest, DetectionMetricsSchema,
     VerificationRequestSchema, VerificationRequestCreate,
     RiskAssessmentSchema, AnomalySignalSchema, PositionReportSchema,
 )
@@ -240,6 +241,49 @@ def get_alert_detail(alert_id: str, db: Session = Depends(get_db)):
     )
 
 
+@router.post("/alerts/{alert_id}/action")
+def alert_action(
+    alert_id: str,
+    req: AlertActionRequest,
+    db: Session = Depends(get_db),
+):
+    """Perform an operator action on an alert (acknowledge, dismiss, pin, note, feedback)."""
+    alert = db.query(AlertORM).filter(AlertORM.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    action = req.action
+    if action in ("acknowledge", "acknowledged"):
+        alert.status = "acknowledged"
+    elif action in ("dismiss", "dismissed"):
+        alert.status = "dismissed"
+    elif action in ("pin", "pinned"):
+        alert.status = "pinned"
+
+    if req.notes:
+        alert.operator_notes = req.notes
+
+    if req.feedback and req.feedback in ("confirmed", "false_positive"):
+        alert.feedback = req.feedback
+        alert.feedback_at = datetime.utcnow()
+
+    # Create audit entry
+    audit = AlertAuditORM(
+        alert_id=alert_id,
+        action=action,
+        details=json.dumps({
+            "notes": req.notes,
+            "feedback": req.feedback,
+            "new_status": alert.status,
+        }),
+    )
+    db.add(audit)
+    db.commit()
+
+    return {"id": alert.id, "status": alert.status, "feedback": alert.feedback}
+
+
+# Keep legacy PATCH for backward compatibility
 @router.patch("/alerts/{alert_id}")
 def patch_alert(
     alert_id: str,
@@ -247,11 +291,55 @@ def patch_alert(
     notes: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Update alert status (acknowledge, dismiss, pin)."""
+    """Update alert status (legacy endpoint)."""
     alert = update_alert_status(db, alert_id, status, notes)
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
     return {"id": alert.id, "status": alert.status}
+
+
+@router.get("/alerts/{alert_id}/audit", response_model=list[AlertAuditSchema])
+def get_alert_audit(alert_id: str, db: Session = Depends(get_db)):
+    """Get the audit trail for an alert."""
+    entries = (
+        db.query(AlertAuditORM)
+        .filter(AlertAuditORM.alert_id == alert_id)
+        .order_by(AlertAuditORM.timestamp.desc())
+        .all()
+    )
+    return [AlertAuditSchema(action=e.action, details=e.details, timestamp=e.timestamp) for e in entries]
+
+
+@router.get("/detection/metrics", response_model=DetectionMetricsSchema)
+def get_detection_metrics(
+    region: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Get detection quality metrics — precision, false positive rate, etc."""
+    def q():
+        base = db.query(AlertORM)
+        if region:
+            base = base.join(VesselORM).filter(VesselORM.region == region)
+        return base
+
+    total = q().count()
+    active = q().filter(AlertORM.status == "active").count()
+    acknowledged = q().filter(AlertORM.status == "acknowledged").count()
+    dismissed = q().filter(AlertORM.status == "dismissed").count()
+    confirmed = q().filter(AlertORM.feedback == "confirmed").count()
+    false_pos = q().filter(AlertORM.feedback == "false_positive").count()
+    feedback_total = confirmed + false_pos
+
+    return DetectionMetricsSchema(
+        total_alerts=total,
+        active_alerts=active,
+        acknowledged=acknowledged,
+        dismissed=dismissed,
+        confirmed_threats=confirmed,
+        false_positives=false_pos,
+        pending_feedback=total - feedback_total - dismissed,
+        precision=round(confirmed / feedback_total, 3) if feedback_total > 0 else None,
+    )
 
 
 @router.post("/alerts/generate")

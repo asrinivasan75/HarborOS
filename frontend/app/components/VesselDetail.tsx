@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type { VesselDetail as VesselDetailType, VerificationRequest } from "@/app/lib/api";
 import { api } from "@/app/lib/api";
 
@@ -35,6 +35,63 @@ function severityBarColor(severity: number): string {
 export default function VesselDetailPanel({ vessel, alertId, onClose }: VesselDetailProps) {
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
+
+  // Alert action state
+  const [alertStatus, setAlertStatus] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Operator notes state
+  const [noteText, setNoteText] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [savedNotes, setSavedNotes] = useState<string[]>(
+    (vessel as unknown as Record<string, unknown>).operator_notes
+      ? ((vessel as unknown as Record<string, unknown>).operator_notes as string[])
+      : []
+  );
+
+  // Feedback state
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+
+  const handleAlertAction = useCallback(async (action: string) => {
+    if (!alertId) return;
+    setActionLoading(action);
+    try {
+      const res = await api.alertAction(alertId, action);
+      setAlertStatus(res.status);
+    } catch (e) {
+      console.error("Alert action failed:", e);
+    } finally {
+      setActionLoading(null);
+    }
+  }, [alertId]);
+
+  const handleSaveNote = useCallback(async () => {
+    if (!alertId || !noteText.trim()) return;
+    setNoteSaving(true);
+    try {
+      await api.alertAction(alertId, "note", noteText.trim());
+      setSavedNotes((prev) => [...prev, noteText.trim()]);
+      setNoteText("");
+    } catch (e) {
+      console.error("Save note failed:", e);
+    } finally {
+      setNoteSaving(false);
+    }
+  }, [alertId, noteText]);
+
+  const handleFeedback = useCallback(async (value: string) => {
+    if (!alertId) return;
+    setFeedbackLoading(true);
+    try {
+      await api.alertAction(alertId, "feedback", undefined, value);
+      setFeedback(value);
+    } catch (e) {
+      console.error("Feedback failed:", e);
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }, [alertId]);
 
   const handleVerify = async () => {
     if (!alertId) return;
@@ -201,6 +258,106 @@ export default function VesselDetailPanel({ vessel, alertId, onClose }: VesselDe
             >
               {verifyLoading ? "Requesting..." : "Request Verification"}
             </button>
+          )}
+        </div>
+      )}
+
+      {/* Alert Actions */}
+      {alertId && (
+        <div className="p-5 border-b border-[#1a2235]">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Alert Actions</h3>
+            {alertStatus && (
+              <span className="text-[9px] font-semibold uppercase px-2 py-0.5 rounded-md border bg-blue-500/10 text-blue-400 border-blue-500/25">
+                {alertStatus}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleAlertAction("acknowledge")}
+              disabled={actionLoading !== null}
+              className="flex-1 py-2 px-3 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 hover:border-blue-500/40 disabled:opacity-50 text-blue-400 text-[11px] font-medium rounded-lg transition-all"
+            >
+              {actionLoading === "acknowledge" ? "..." : "Acknowledge"}
+            </button>
+            <button
+              onClick={() => handleAlertAction("dismiss")}
+              disabled={actionLoading !== null}
+              className="flex-1 py-2 px-3 bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/20 hover:border-slate-500/30 disabled:opacity-50 text-slate-400 text-[11px] font-medium rounded-lg transition-all"
+            >
+              {actionLoading === "dismiss" ? "..." : "Dismiss"}
+            </button>
+            <button
+              onClick={() => handleAlertAction("pin")}
+              disabled={actionLoading !== null}
+              className="flex-1 py-2 px-3 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/25 hover:border-yellow-500/35 disabled:opacity-50 text-yellow-400 text-[11px] font-medium rounded-lg transition-all"
+            >
+              {actionLoading === "pin" ? "..." : "Pin"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Operator Notes */}
+      {alertId && (
+        <div className="p-5 border-b border-[#1a2235]">
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Operator Notes</h3>
+          {savedNotes.length > 0 && (
+            <div className="space-y-1.5 mb-3">
+              {savedNotes.map((note, i) => (
+                <div key={i} className="bg-[#111827] rounded-md p-2.5 border border-[#1a2235]">
+                  <p className="text-[11px] text-slate-300 leading-relaxed">{note}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <textarea
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="Add a note..."
+            rows={2}
+            className="w-full bg-[#111827] border border-[#1a2235] rounded-lg p-2.5 text-[11px] text-slate-300 placeholder-slate-600 resize-none focus:outline-none focus:border-slate-600 transition-colors"
+          />
+          <button
+            onClick={handleSaveNote}
+            disabled={noteSaving || !noteText.trim()}
+            className="mt-2 w-full py-2 px-3 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 hover:border-blue-500/40 disabled:bg-[#111827] disabled:border-[#1a2235] disabled:text-slate-600 text-blue-400 text-[11px] font-medium rounded-lg transition-all"
+          >
+            {noteSaving ? "Saving..." : "Save Note"}
+          </button>
+        </div>
+      )}
+
+      {/* Feedback */}
+      {alertId && (
+        <div className="p-5">
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Feedback</h3>
+          {feedback ? (
+            <div className={`rounded-lg p-3 border text-center text-[11px] font-medium ${
+              feedback === "confirmed_threat"
+                ? "bg-red-500/10 text-red-400 border-red-500/25"
+                : "bg-slate-500/10 text-slate-400 border-slate-500/20"
+            }`}>
+              Marked as: {feedback === "confirmed_threat" ? "Confirmed Threat" : "False Positive"}
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleFeedback("confirmed_threat")}
+                disabled={feedbackLoading}
+                className="flex-1 py-2 px-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 hover:border-red-500/35 disabled:opacity-50 text-red-400 text-[11px] font-medium rounded-lg transition-all"
+              >
+                {feedbackLoading ? "..." : "Confirmed Threat"}
+              </button>
+              <button
+                onClick={() => handleFeedback("false_positive")}
+                disabled={feedbackLoading}
+                className="flex-1 py-2 px-3 bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/20 hover:border-slate-500/30 disabled:opacity-50 text-slate-400 text-[11px] font-medium rounded-lg transition-all"
+              >
+                {feedbackLoading ? "..." : "False Positive"}
+              </button>
+            </div>
           )}
         </div>
       )}

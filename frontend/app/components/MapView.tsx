@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { api } from "@/app/lib/api";
 import type { Vessel, Geofence } from "@/app/lib/api";
 
 interface MapViewProps {
@@ -49,17 +50,23 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
       const score = vessel.risk_score ?? 0;
       const color = vesselColor(vessel.risk_score);
       const isSelected = vessel.id === selectedVesselId;
-      const size = isSelected ? 16 : score >= 45 ? 12 : 9;
+      const size = isSelected ? 22 : score >= 45 ? 18 : 14;
+      const course = vessel.latest_position.course_over_ground ?? 0;
 
       const el = document.createElement("div");
       el.style.width = `${size}px`;
       el.style.height = `${size}px`;
-      el.style.borderRadius = "50%";
-      el.style.backgroundColor = color;
-      el.style.border = isSelected ? "2px solid #e2e8f0" : "1.5px solid rgba(0,0,0,0.4)";
-      el.style.boxShadow = `0 0 ${score >= 70 ? "12" : score >= 45 ? "8" : "4"}px ${color}${score >= 45 ? "80" : "40"}`;
       el.style.cursor = "pointer";
       el.style.transition = "all 0.2s ease";
+      el.style.filter = `drop-shadow(0 0 ${score >= 70 ? "6" : score >= 45 ? "4" : "2"}px ${color}${score >= 45 ? "cc" : "80"})`;
+      // Rotate so the arrow points in the direction of travel (0 = north/up)
+      el.style.transform = `rotate(${course}deg)`;
+
+      const strokeColor = isSelected ? "#e2e8f0" : "rgba(0,0,0,0.5)";
+      const strokeWidth = isSelected ? 1.5 : 1;
+      el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}">
+        <path d="M12 2 L4 20 L12 15 L20 20 Z" fill="${color}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round"/>
+      </svg>`;
 
       if (score >= 70) {
         el.style.animation = "pulse 2s infinite";
@@ -182,8 +189,61 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
     });
   }, [flyTo]);
 
+  // Vessel trail when selected
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Clean up previous trail
+    if (map.getLayer("vessel-trail")) map.removeLayer("vessel-trail");
+    if (map.getSource("vessel-trail")) map.removeSource("vessel-trail");
+
+    if (!selectedVesselId) return;
+
+    const selectedVessel = vessels.find((v) => v.id === selectedVesselId);
+    const trailColor = vesselColor(selectedVessel?.risk_score ?? null);
+
+    let cancelled = false;
+    api.getVesselDetail(selectedVesselId).then((detail) => {
+      if (cancelled || !mapRef.current) return;
+      const positions = detail.positions;
+      if (!positions || positions.length < 2) return;
+
+      const coordinates = positions.map((p) => [p.longitude, p.latitude]);
+
+      mapRef.current.addSource("vessel-trail", {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "LineString",
+            coordinates,
+          },
+        },
+      });
+
+      mapRef.current.addLayer({
+        id: "vessel-trail",
+        type: "line",
+        source: "vessel-trail",
+        paint: {
+          "line-color": trailColor,
+          "line-width": 2,
+          "line-opacity": 0.6,
+        },
+      });
+    }).catch((err) => {
+      console.error("Failed to fetch vessel trail:", err);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedVesselId, vessels]);
+
   return (
-    <div className="flex-1 relative" style={{ minHeight: 0 }}>
+    <div className="absolute inset-0">
       <div ref={mapContainer} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" }} />
       {/* Legend */}
       <div className="absolute bottom-4 left-4 bg-[#0d1320]/95 backdrop-blur-md border border-[#1a2235] rounded-xl p-3.5 text-[10px] shadow-xl shadow-black/30">

@@ -26,6 +26,6 @@ def get_db():
 def init_db():
     from app.models.domain import (  # noqa: F401
         VesselORM, PositionReportORM, GeofenceORM,
-        AlertORM, AnomalySignalORM, VerificationRequestORM
+        AlertORM, AnomalySignalORM, VerificationRequestORM, AlertAuditORM
     )
     Base.metadata.create_all(bind=engine)
