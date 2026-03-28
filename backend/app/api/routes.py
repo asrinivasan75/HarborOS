@@ -385,15 +385,48 @@ def create_verification_request(
     }
     asset = asset_registry.get(req.asset_type, asset_registry["camera"])
 
+    is_satellite = (req.asset_type == "satellite")
+    now = datetime.utcnow()
+
+    # For satellite: immediately return last-pass imagery data
+    last_pass_notes = None
+    last_pass_confidence = None
+    last_pass_media = None
+    if is_satellite:
+        import random
+        days_ago = random.randint(1, 4)
+        cloud_cover = random.randint(5, 35)
+        last_pass_notes = json.dumps({
+            "last_pass": {
+                "acquired": (now - __import__("datetime").timedelta(days=days_ago)).isoformat() + "Z",
+                "satellite": "Sentinel-2A",
+                "resolution_m": 10,
+                "cloud_cover_pct": cloud_cover,
+                "bands": "True Color (B4/B3/B2)",
+                "status": "delivered",
+            },
+            "next_pass": {
+                "eta_minutes": asset["eta_min"],
+                "satellite": "Sentinel-2B",
+                "expected_resolution_m": 10,
+                "status": "tasking_accepted",
+            },
+        })
+        last_pass_confidence = round(0.7 - (cloud_cover / 100) * 0.3, 2)
+        last_pass_media = f"s2_tile_{now.strftime('%Y%m%d')}_{days_ago}d_ago.tif"
+
     verification = VerificationRequestORM(
         id=str(uuid.uuid4()),
         alert_id=req.alert_id,
         vessel_id=req.vessel_id,
-        status="assigned",  # Simulate quick assignment
+        status="in_progress" if is_satellite else "assigned",
         asset_type=req.asset_type or "camera",
         asset_id=asset["asset_id"],
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=now,
+        updated_at=now,
+        result_confidence=last_pass_confidence,
+        result_notes=last_pass_notes,
+        result_media_ref=last_pass_media,
     )
     db.add(verification)
     db.commit()
@@ -408,18 +441,46 @@ def create_verification_request(
         asset_id=verification.asset_id,
         created_at=verification.created_at,
         updated_at=verification.updated_at,
-        result_confidence=None,
-        result_notes=None,
-        result_media_ref=None,
+        result_confidence=verification.result_confidence,
+        result_notes=verification.result_notes,
+        result_media_ref=verification.result_media_ref,
     )
 
 
 @router.get("/verification-requests/{request_id}", response_model=VerificationRequestSchema)
 def get_verification_request(request_id: str, db: Session = Depends(get_db)):
-    """Get verification request status."""
+    """Get verification request status.
+
+    For satellite requests, simulates the next pass completing after ~20 seconds
+    (compressed from ~47 minutes for demo purposes).
+    """
     vr = db.query(VerificationRequestORM).filter(VerificationRequestORM.id == request_id).first()
     if not vr:
         raise HTTPException(status_code=404, detail="Verification request not found")
+
+    # Simulate satellite next-pass completion (20s after creation for demo)
+    if vr.asset_type == "satellite" and vr.status == "in_progress":
+        elapsed = (datetime.utcnow() - vr.created_at).total_seconds()
+        if elapsed > 20:
+            import random
+            cloud_cover = random.randint(2, 15)
+            # Parse existing notes and update with new pass data
+            existing = json.loads(vr.result_notes) if vr.result_notes else {}
+            existing["next_pass"] = {
+                "acquired": datetime.utcnow().isoformat() + "Z",
+                "satellite": "Sentinel-2B",
+                "resolution_m": 10,
+                "cloud_cover_pct": cloud_cover,
+                "bands": "True Color (B4/B3/B2)",
+                "status": "delivered",
+            }
+            vr.status = "completed"
+            vr.result_notes = json.dumps(existing)
+            vr.result_confidence = round(0.85 - (cloud_cover / 100) * 0.2, 2)
+            vr.result_media_ref = f"s2_tile_{datetime.utcnow().strftime('%Y%m%d')}_fresh.tif"
+            vr.updated_at = datetime.utcnow()
+            db.commit()
+
     return VerificationRequestSchema(
         id=vr.id,
         alert_id=vr.alert_id,

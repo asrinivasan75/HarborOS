@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { VesselDetail as VesselDetailType, VerificationRequest } from "@/app/lib/api";
 import { api } from "@/app/lib/api";
 
@@ -238,22 +238,7 @@ export default function VesselDetailPanel({ vessel, alertId, onClose }: VesselDe
         <div className="p-5">
           <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Verification</h3>
           {verification ? (
-            <div className="bg-[#111827] rounded-lg p-4 border border-blue-500/20">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-blue-400" style={{ animation: "subtle-pulse 2s infinite" }} />
-                <span className="text-[11px] font-semibold text-blue-400 uppercase tracking-wide">
-                  {verification.status}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                Asset: <span className="font-mono text-slate-300">{verification.asset_id}</span> ({verification.asset_type})
-              </p>
-              <p className="text-[10px] text-slate-500 mt-1.5">
-                {verification.asset_type === "satellite"
-                  ? "Satellite tasking accepted. Next pass in ~47 minutes. Imagery will be delivered to the operator console upon acquisition."
-                  : "Verification task created. Asset dispatched."}
-              </p>
-            </div>
+            <SatelliteVerificationResult verification={verification} />
           ) : (
             <div className="space-y-2.5">
               <div className="grid grid-cols-4 gap-1.5">
@@ -396,6 +381,140 @@ function InfoRow({ label, value, highlight }: { label: string; value: string; hi
     <div className="flex flex-col">
       <span className="text-[9px] text-slate-600 uppercase tracking-wider">{label}</span>
       <span className={`text-[12px] font-mono ${highlight ? "text-orange-400" : "text-slate-300"}`}>{value}</span>
+    </div>
+  );
+}
+
+function SatelliteVerificationResult({ verification }: { verification: VerificationRequest }) {
+  const [liveVr, setLiveVr] = useState(verification);
+
+  // Poll for satellite next-pass completion
+  useEffect(() => {
+    if (liveVr.asset_type !== "satellite" || liveVr.status === "completed") return;
+    const interval = setInterval(async () => {
+      try {
+        const updated = await api.getVerificationRequest(liveVr.id);
+        setLiveVr(updated);
+        if (updated.status === "completed") clearInterval(interval);
+      } catch {}
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [liveVr.id, liveVr.status, liveVr.asset_type]);
+
+  // Parse satellite-specific notes
+  const satData = liveVr.result_notes ? (() => {
+    try { return JSON.parse(liveVr.result_notes); } catch { return null; }
+  })() : null;
+
+  const isSatellite = liveVr.asset_type === "satellite";
+  const isComplete = liveVr.status === "completed";
+
+  return (
+    <div className="space-y-3">
+      {/* Status header */}
+      <div className="bg-[#111827] rounded-lg p-4 border border-blue-500/20">
+        <div className="flex items-center gap-2 mb-2">
+          <div
+            className={`w-2 h-2 rounded-full ${isComplete ? "bg-emerald-400" : "bg-blue-400"}`}
+            style={!isComplete ? { animation: "subtle-pulse 2s infinite" } : undefined}
+          />
+          <span className={`text-[11px] font-semibold uppercase tracking-wide ${isComplete ? "text-emerald-400" : "text-blue-400"}`}>
+            {liveVr.status}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          Asset: <span className="font-mono text-slate-300">{liveVr.asset_id}</span> ({liveVr.asset_type})
+        </p>
+        {!isSatellite && (
+          <p className="text-[10px] text-slate-500 mt-1.5">Verification task created. Asset dispatched.</p>
+        )}
+      </div>
+
+      {/* Satellite: Last pass imagery */}
+      {isSatellite && satData?.last_pass && (
+        <div className="bg-[#111827] rounded-lg p-4 border border-[#1a2235]">
+          <div className="flex items-center gap-2 mb-2.5">
+            <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider">Last Available Imagery</span>
+            <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">{satData.last_pass.status}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-[10px]">
+            <div>
+              <span className="text-slate-600">Acquired</span>
+              <span className="text-slate-300 ml-1 font-mono">
+                {new Date(satData.last_pass.acquired).toLocaleDateString()}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-600">Satellite</span>
+              <span className="text-slate-300 ml-1 font-mono">{satData.last_pass.satellite}</span>
+            </div>
+            <div>
+              <span className="text-slate-600">Resolution</span>
+              <span className="text-slate-300 ml-1 font-mono">{satData.last_pass.resolution_m}m</span>
+            </div>
+            <div>
+              <span className="text-slate-600">Cloud cover</span>
+              <span className={`ml-1 font-mono ${satData.last_pass.cloud_cover_pct > 20 ? "text-yellow-400" : "text-slate-300"}`}>
+                {satData.last_pass.cloud_cover_pct}%
+              </span>
+            </div>
+          </div>
+          {liveVr.result_confidence != null && (
+            <div className="mt-2 pt-2 border-t border-[#1a2235]">
+              <span className="text-[10px] text-slate-600">Confidence</span>
+              <span className="text-[10px] text-slate-300 font-mono ml-1">{(liveVr.result_confidence * 100).toFixed(0)}%</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Satellite: Next pass status */}
+      {isSatellite && satData?.next_pass && (
+        <div className={`rounded-lg p-4 border ${
+          isComplete
+            ? "bg-emerald-500/5 border-emerald-500/20"
+            : "bg-[#111827] border-amber-500/20"
+        }`}>
+          <div className="flex items-center gap-2 mb-2.5">
+            <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider">
+              {isComplete ? "New Imagery Acquired" : "Next Pass — Pending"}
+            </span>
+            {!isComplete && (
+              <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                ETA ~{satData.next_pass.eta_minutes || 47} min
+              </span>
+            )}
+            {isComplete && (
+              <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">delivered</span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-[10px]">
+            {isComplete && satData.next_pass.acquired && (
+              <div>
+                <span className="text-slate-600">Acquired</span>
+                <span className="text-emerald-400 ml-1 font-mono">Just now</span>
+              </div>
+            )}
+            <div>
+              <span className="text-slate-600">Satellite</span>
+              <span className="text-slate-300 ml-1 font-mono">{satData.next_pass.satellite}</span>
+            </div>
+            <div>
+              <span className="text-slate-600">Resolution</span>
+              <span className="text-slate-300 ml-1 font-mono">{satData.next_pass.expected_resolution_m || satData.next_pass.resolution_m || 10}m</span>
+            </div>
+            {isComplete && satData.next_pass.cloud_cover_pct != null && (
+              <div>
+                <span className="text-slate-600">Cloud cover</span>
+                <span className="text-emerald-400 ml-1 font-mono">{satData.next_pass.cloud_cover_pct}%</span>
+              </div>
+            )}
+          </div>
+          {!isComplete && (
+            <p className="text-[10px] text-amber-400/60 mt-2 italic">Tasking accepted. Awaiting satellite pass...</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
