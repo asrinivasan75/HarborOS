@@ -35,7 +35,7 @@ function severityBarColor(severity: number): string {
   return "bg-yellow-400";
 }
 
-function formatReportMarkdown(report: Record<string, unknown>): string {
+function formatReportHTML(report: Record<string, unknown>): string {
   const v = report.vessel as Record<string, unknown>;
   const pos = report.latest_position as Record<string, unknown> | null;
   const risk = report.risk_assessment as Record<string, unknown>;
@@ -44,74 +44,124 @@ function formatReportMarkdown(report: Record<string, unknown>): string {
   const audit = report.alert_audit_trail as Record<string, unknown>[];
   const verifications = report.verification_requests as Record<string, unknown>[];
 
-  let md = `# Incident Report: ${v.name}\n`;
-  md += `**Generated:** ${report.generated_at}\n\n`;
+  const riskScore = risk.score as number;
+  const riskColor = riskScore >= 70 ? "#ef4444" : riskScore >= 45 ? "#f97316" : riskScore >= 25 ? "#f59e0b" : "#22c55e";
 
-  md += `## Vessel Details\n`;
-  md += `| Field | Value |\n|---|---|\n`;
-  md += `| Name | ${v.name} |\n`;
-  md += `| MMSI | ${v.mmsi} |\n`;
-  md += `| IMO | ${v.imo || "N/A"} |\n`;
-  md += `| Type | ${v.vessel_type} |\n`;
-  md += `| Flag | ${v.flag_state} |\n`;
-  md += `| Length | ${v.length ? v.length + "m" : "N/A"} |\n`;
-  md += `| Beam | ${v.beam ? v.beam + "m" : "N/A"} |\n`;
-  md += `| Draft | ${v.draft ? v.draft + "m" : "N/A"} |\n\n`;
+  const css = `
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1e293b; padding: 40px; max-width: 800px; margin: 0 auto; font-size: 13px; line-height: 1.5; }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    h2 { font-size: 15px; color: #475569; margin: 24px 0 10px; padding-bottom: 4px; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; letter-spacing: 0.05em; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #0f172a; }
+    .header-left h1 { color: #0f172a; }
+    .header-left p { color: #64748b; font-size: 12px; }
+    .risk-badge { text-align: center; padding: 12px 20px; border-radius: 8px; }
+    .risk-score { font-size: 36px; font-weight: 800; font-family: monospace; }
+    .risk-action { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; margin-top: 2px; }
+    table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 12px; }
+    th { text-align: left; padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 600; color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+    td { padding: 5px 10px; border: 1px solid #e2e8f0; font-family: monospace; font-size: 11px; }
+    .signal { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; }
+    .signal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .signal-type { font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
+    .signal-severity { font-family: monospace; font-weight: 700; font-size: 12px; }
+    .signal-desc { color: #64748b; font-size: 12px; }
+    .explanation { background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 14px; margin: 8px 0 16px; color: #92400e; font-size: 12px; }
+    .meta-row { display: flex; gap: 24px; margin-bottom: 4px; }
+    .meta-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; }
+    .meta-value { font-family: monospace; }
+    .footer { margin-top: 30px; padding-top: 12px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 10px; text-align: center; }
+    @media print { body { padding: 20px; } }
+  `;
 
-  md += `## Risk Assessment\n`;
-  md += `- **Score:** ${risk.score} / 100\n`;
-  md += `- **Recommended Action:** ${risk.recommended_action}\n`;
-  if (risk.explanation) md += `- **Explanation:** ${risk.explanation}\n`;
-  md += `\n`;
+  let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Incident Report - ${v.name}</title><style>${css}</style></head><body>`;
 
+  // Header
+  html += `<div class="header">
+    <div class="header-left">
+      <h1>${v.name}</h1>
+      <p>MMSI ${v.mmsi}${v.imo ? ` / IMO ${v.imo}` : ""} &middot; ${v.vessel_type} &middot; ${v.flag_state}</p>
+      <p style="margin-top:4px">Generated: ${new Date(report.generated_at as string).toLocaleString()}</p>
+    </div>
+    <div class="risk-badge" style="background:${riskColor}15; border: 1px solid ${riskColor}40">
+      <div class="risk-score" style="color:${riskColor}">${Math.round(riskScore)}</div>
+      <div class="risk-action" style="color:${riskColor}">${risk.recommended_action}</div>
+    </div>
+  </div>`;
+
+  // Explanation
+  if (risk.explanation) {
+    html += `<div class="explanation">${risk.explanation}</div>`;
+  }
+
+  // Vessel Details
+  html += `<h2>Vessel Details</h2><table>
+    <tr><th>Length</th><td>${v.length ? v.length + "m" : "N/A"}</td><th>Beam</th><td>${v.beam ? v.beam + "m" : "N/A"}</td><th>Draft</th><td>${v.draft ? v.draft + "m" : "N/A"}</td></tr>
+    <tr><th>Callsign</th><td>${v.callsign || "N/A"}</td><th>Destination</th><td>${v.destination || "N/A"}</td><th>Deficiencies</th><td>${v.inspection_deficiencies ?? 0}</td></tr>
+  </table>`;
+
+  // Position
   if (pos) {
-    md += `## Latest Position\n`;
-    md += `- **Latitude:** ${pos.latitude}\n`;
-    md += `- **Longitude:** ${pos.longitude}\n`;
-    md += `- **Speed:** ${pos.speed_over_ground != null ? pos.speed_over_ground + " kt" : "N/A"}\n`;
-    md += `- **Course:** ${pos.course_over_ground != null ? pos.course_over_ground + "\u00B0" : "N/A"}\n`;
-    md += `- **Timestamp:** ${pos.timestamp}\n\n`;
+    html += `<h2>Latest Position</h2>
+    <div class="meta-row">
+      <div><span class="meta-label">Lat</span> <span class="meta-value">${(pos.latitude as number).toFixed(5)}</span></div>
+      <div><span class="meta-label">Lon</span> <span class="meta-value">${(pos.longitude as number).toFixed(5)}</span></div>
+      <div><span class="meta-label">Speed</span> <span class="meta-value">${pos.speed_over_ground != null ? (pos.speed_over_ground as number).toFixed(1) + " kt" : "N/A"}</span></div>
+      <div><span class="meta-label">Course</span> <span class="meta-value">${pos.course_over_ground != null ? (pos.course_over_ground as number).toFixed(0) + "\u00B0" : "N/A"}</span></div>
+    </div>`;
   }
 
-  if (signals && signals.length > 0) {
-    md += `## Anomaly Signals (${signals.length})\n`;
+  // Anomaly Signals
+  if (signals?.length) {
+    html += `<h2>Anomaly Signals (${signals.length})</h2>`;
     for (const s of signals) {
-      md += `### ${(s.anomaly_type as string).replace(/_/g, " ").toUpperCase()}\n`;
-      md += `- **Severity:** ${((s.severity as number) * 100).toFixed(0)}%\n`;
-      md += `- **Description:** ${s.description}\n\n`;
+      const sev = (s.severity as number) * 100;
+      const sevColor = sev >= 70 ? "#ef4444" : sev >= 40 ? "#f97316" : "#f59e0b";
+      html += `<div class="signal">
+        <div class="signal-header">
+          <span class="signal-type">${(s.anomaly_type as string).replace(/_/g, " ")}</span>
+          <span class="signal-severity" style="color:${sevColor}">${sev.toFixed(0)}%</span>
+        </div>
+        <div class="signal-desc">${s.description}</div>
+      </div>`;
     }
   }
 
-  if (trail && trail.length > 0) {
-    md += `## Position Trail (${trail.length} points)\n`;
-    md += `| Timestamp | Lat | Lon | Speed | Course |\n|---|---|---|---|---|\n`;
-    for (const p of trail) {
-      md += `| ${p.timestamp} | ${p.latitude} | ${p.longitude} | ${p.speed_over_ground ?? "N/A"} | ${p.course_over_ground ?? "N/A"} |\n`;
+  // Position Trail
+  if (trail?.length) {
+    html += `<h2>Position Trail (${trail.length} points)</h2><table>
+    <tr><th>Timestamp</th><th>Lat</th><th>Lon</th><th>Speed</th><th>Course</th></tr>`;
+    for (const p of trail.slice(0, 30)) {
+      html += `<tr><td>${p.timestamp}</td><td>${p.latitude}</td><td>${p.longitude}</td><td>${p.speed_over_ground ?? "N/A"}</td><td>${p.course_over_ground ?? "N/A"}</td></tr>`;
     }
-    md += `\n`;
+    if (trail.length > 30) html += `<tr><td colspan="5" style="text-align:center;color:#94a3b8">... ${trail.length - 30} more positions</td></tr>`;
+    html += `</table>`;
   }
 
-  if (audit && audit.length > 0) {
-    md += `## Alert Audit Trail\n`;
+  // Audit Trail
+  if (audit?.length) {
+    html += `<h2>Alert Audit Trail</h2>`;
     for (const e of audit) {
-      md += `- **${e.timestamp}** \u2014 ${e.action}${e.details ? ": " + e.details : ""}\n`;
+      html += `<div style="margin-bottom:4px"><strong>${e.timestamp}</strong> &mdash; ${e.action}${e.details ? ": " + e.details : ""}</div>`;
     }
-    md += `\n`;
   }
 
+  // Notes
   if (report.operator_notes) {
-    md += `## Operator Notes\n${report.operator_notes}\n\n`;
+    html += `<h2>Operator Notes</h2><p>${report.operator_notes}</p>`;
   }
 
-  if (verifications && verifications.length > 0) {
-    md += `## Verification Requests\n`;
+  // Verifications
+  if (verifications?.length) {
+    html += `<h2>Verification Requests</h2>`;
     for (const vr of verifications) {
-      md += `- **${vr.asset_type}** (${vr.asset_id}) \u2014 Status: ${vr.status}, Created: ${vr.created_at}\n`;
+      html += `<div style="margin-bottom:4px"><strong>${vr.asset_type}</strong> (${vr.asset_id}) &mdash; Status: ${vr.status}</div>`;
     }
-    md += `\n`;
   }
 
-  return md;
+  html += `<div class="footer">HarborOS Incident Report &middot; Maritime Awareness Platform &middot; CONFIDENTIAL</div>`;
+  html += `</body></html>`;
+  return html;
 }
 
 export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint }: VesselDetailProps) {
@@ -123,18 +173,14 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
     setExportLoading(true);
     try {
       const report = await api.getVesselReport(vessel.id);
-      const markdown = formatReportMarkdown(report);
-      const blob = new Blob([markdown], { type: "text/markdown" });
-      const url = URL.createObjectURL(blob);
-      const date = new Date().toISOString().slice(0, 10);
-      const safeName = vessel.name.replace(/[^a-zA-Z0-9]/g, "_");
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${safeName}_incident_report_${date}.md`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const html = formatReportHTML(report);
+      const printWindow = window.open("", "_blank");
+      if (printWindow) {
+        printWindow.document.write(html);
+        printWindow.document.close();
+        // Give it a moment to render, then trigger print (Save as PDF)
+        setTimeout(() => printWindow.print(), 500);
+      }
     } catch (e) {
       console.error("Export report failed:", e);
     } finally {
