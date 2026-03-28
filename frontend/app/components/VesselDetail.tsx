@@ -463,7 +463,7 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
       {/* Satellite: Last pass imagery */}
       {isSatellite && satData?.last_pass && vesselPosition && (
         <div className="bg-[#111827] rounded-lg border border-[#1a2235] overflow-hidden">
-          <SatThumbnail lat={vesselPosition.latitude} lng={vesselPosition.longitude} borderColor="border-slate-500/30" />
+          <SatThumbnail lat={vesselPosition.latitude} lng={vesselPosition.longitude} borderColor="border-slate-500/30" variant="old" />
           <div className="p-3">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider">Last Available Imagery</span>
@@ -571,11 +571,20 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
   );
 }
 
-function SatThumbnail({ lat, lng, borderColor = "border-cyan-400/50" }: { lat: number; lng: number; borderColor?: string }) {
+/**
+ * Satellite imagery thumbnail.
+ * - `variant="old"`: offset viewing angle + cloud haze + desaturated (older pass)
+ * - `variant="fresh"`: centered + crisp + slight contrast boost (new acquisition)
+ */
+function SatThumbnail({ lat, lng, borderColor = "border-cyan-400/50", variant = "fresh" }: {
+  lat: number; lng: number; borderColor?: string; variant?: "old" | "fresh";
+}) {
   const z = 18;
-  const x = Math.floor(((lng + 180) / 360) * Math.pow(2, z));
+  // Offset the "old" pass by 2 tiles so it shows a slightly different area
+  const tileOffset = variant === "old" ? 2 : 0;
+  const x = Math.floor(((lng + 180) / 360) * Math.pow(2, z)) + tileOffset;
   const latRad = (lat * Math.PI) / 180;
-  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * Math.pow(2, z));
+  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * Math.pow(2, z)) - tileOffset;
 
   const tiles = [];
   for (let dx = -1; dx <= 1; dx++) {
@@ -584,9 +593,18 @@ function SatThumbnail({ lat, lng, borderColor = "border-cyan-400/50" }: { lat: n
     }
   }
 
+  const isOld = variant === "old";
+
   return (
     <div className="h-44 relative overflow-hidden">
-      <div className="absolute inset-0">
+      <div
+        className="absolute inset-0"
+        style={{
+          filter: isOld
+            ? "saturate(0.6) brightness(0.85) contrast(0.9)"
+            : "saturate(1.15) brightness(1.05) contrast(1.1)",
+        }}
+      >
         {tiles.map((t, i) => (
           <img
             key={i}
@@ -603,16 +621,36 @@ function SatThumbnail({ lat, lng, borderColor = "border-cyan-400/50" }: { lat: n
           />
         ))}
       </div>
+      {/* Old pass: cloud haze overlay */}
+      {isOld && (
+        <>
+          <div className="absolute inset-0 bg-white/[0.08]" />
+          <div className="absolute top-0 right-0 w-2/3 h-1/2 bg-gradient-to-bl from-white/[0.12] to-transparent rounded-bl-full" />
+        </>
+      )}
       <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/80 via-transparent to-transparent" />
+      {/* Crosshair */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div className="w-12 h-px bg-cyan-400/50" />
         <div className="absolute h-12 w-px bg-cyan-400/50" />
         <div className="absolute w-5 h-5 border border-cyan-400/30 rounded-full" />
       </div>
+      {/* Corner brackets */}
       <div className={`absolute top-2 left-2 w-3 h-3 border-t border-l ${borderColor}`} />
       <div className={`absolute top-2 right-2 w-3 h-3 border-t border-r ${borderColor}`} />
       <div className={`absolute bottom-8 left-2 w-3 h-3 border-b border-l ${borderColor}`} />
       <div className={`absolute bottom-8 right-2 w-3 h-3 border-b border-r ${borderColor}`} />
+      {/* Timestamp label */}
+      {isOld && (
+        <div className="absolute top-2 right-4 text-[8px] font-mono text-white/40 bg-black/30 px-1.5 py-0.5 rounded">
+          ARCHIVE
+        </div>
+      )}
+      {!isOld && (
+        <div className="absolute top-2 right-4 text-[8px] font-mono text-cyan-300 bg-cyan-500/20 px-1.5 py-0.5 rounded">
+          FRESH
+        </div>
+      )}
       <div className="absolute bottom-2 left-0 right-0 text-center">
         <p className="text-[10px] text-cyan-300 font-mono drop-shadow-lg">
           {lat.toFixed(4)}N, {Math.abs(lng).toFixed(4)}{lng >= 0 ? "E" : "W"}
