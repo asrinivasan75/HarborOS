@@ -85,8 +85,17 @@ function buildMapStyle(baseMap: BaseMap): maplibregl.StyleSpecification {
             "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
           ],
           tileSize: 256,
-          maxzoom: 19,
+          maxzoom: 17,
           attribution: "&copy; Esri, Maxar, Earthstar Geographics",
+        },
+        "carto-labels": {
+          type: "raster",
+          tiles: [
+            "https://a.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}@2x.png",
+            "https://b.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}@2x.png",
+          ],
+          tileSize: 256,
+          maxzoom: 18,
         },
       },
       layers: [
@@ -95,7 +104,15 @@ function buildMapStyle(baseMap: BaseMap): maplibregl.StyleSpecification {
           type: "raster",
           source: "satellite",
           minzoom: 0,
-          maxzoom: 20,
+          maxzoom: 22,
+        },
+        {
+          id: "labels",
+          type: "raster",
+          source: "carto-labels",
+          minzoom: 3,
+          maxzoom: 22,
+          paint: { "raster-opacity": 0.8 },
         },
       ],
     };
