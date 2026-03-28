@@ -5,6 +5,7 @@ import Header from "@/app/components/Header";
 import AlertFeed from "@/app/components/AlertFeed";
 import MapView from "@/app/components/MapView";
 import VesselDetailPanel from "@/app/components/VesselDetail";
+import VesselCompare from "@/app/components/VesselCompare";
 import DemoMode from "@/app/components/DemoMode";
 import type { SatelliteFootprint } from "@/app/components/MapView";
 import { api } from "@/app/lib/api";
@@ -25,8 +26,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ingestionStatus, setIngestionStatus] = useState<IngestionStatus | null>(null);
-  const [mapTarget, setMapTarget] = useState<{ center: [number, number]; zoom: number } | null>(null);
+  const [mapTarget, setMapTarget] = useState<{ center: [number, number]; zoom: number; _t?: number } | null>(null);
   const [satelliteFootprint, setSatelliteFootprint] = useState<SatelliteFootprint | null>(null);
+  const [comparedVessels, setComparedVessels] = useState<VesselDetail[]>([]);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load initial data
@@ -90,10 +92,10 @@ export default function Dashboard() {
     // Fly to the region
     if (regionKey && regions[regionKey]) {
       const r = regions[regionKey];
-      setMapTarget({ center: [r.center[1], r.center[0]], zoom: r.zoom });
+      setMapTarget({ center: [r.center[1], r.center[0]], zoom: r.zoom, _t: Date.now() });
     } else {
       // "All regions" — zoom out to world view
-      setMapTarget({ center: [20, 0], zoom: 2 });
+      setMapTarget({ center: [20, 0], zoom: 2, _t: Date.now() });
     }
 
     // Fetch filtered data immediately
@@ -120,6 +122,7 @@ export default function Dashboard() {
         setMapTarget({
           center: [detail.latest_position.longitude, detail.latest_position.latitude],
           zoom: 14,
+          _t: Date.now(),
         });
       }
     } catch (e) {
@@ -137,6 +140,7 @@ export default function Dashboard() {
         setMapTarget({
           center: [detail.latest_position.longitude, detail.latest_position.latitude],
           zoom: 14,
+          _t: Date.now(),
         });
       }
     } catch (e) {
@@ -159,6 +163,27 @@ export default function Dashboard() {
     setSelectedVessel(null);
     setSelectedAlertId(null);
     setSatelliteFootprint(null);
+  }, []);
+
+  const handleCompareVessel = useCallback(async (alert: Alert) => {
+    try {
+      const detail = await api.getVesselDetail(alert.vessel_id);
+      setComparedVessels((prev) => {
+        if (prev.length >= 3) return prev;
+        if (prev.some((v) => v.id === detail.id)) return prev;
+        return [...prev, detail];
+      });
+    } catch (e) {
+      console.error("Failed to load vessel for comparison:", e);
+    }
+  }, []);
+
+  const handleRemoveCompareVessel = useCallback((vesselId: string) => {
+    setComparedVessels((prev) => prev.filter((v) => v.id !== vesselId));
+  }, []);
+
+  const handleClearCompare = useCallback(() => {
+    setComparedVessels([]);
   }, []);
 
   if (loading) {
@@ -216,6 +241,7 @@ export default function Dashboard() {
           selectedAlertId={selectedAlertId}
           onSelectAlert={handleSelectAlert}
           onLoadMore={handleLoadMoreAlerts}
+          onCompare={handleCompareVessel}
         />
         <div className="flex-1 relative">
           <MapView
@@ -227,7 +253,7 @@ export default function Dashboard() {
             satelliteFootprint={satelliteFootprint}
           />
           <DemoMode
-            onFlyTo={(center, zoom) => setMapTarget({ center, zoom })}
+            onFlyTo={(center, zoom) => setMapTarget({ center, zoom, _t: Date.now() })}
             onSelectVessel={handleSelectVessel}
             onSelectRegion={handleRegionChange}
             darkHorizonId="v-dark-horizon"
@@ -242,6 +268,13 @@ export default function Dashboard() {
           />
         )}
       </div>
+      {comparedVessels.length > 0 && (
+        <VesselCompare
+          vessels={comparedVessels}
+          onRemove={handleRemoveCompareVessel}
+          onClear={handleClearCompare}
+        />
+      )}
     </div>
   );
 }

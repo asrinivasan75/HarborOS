@@ -35,9 +35,112 @@ function severityBarColor(severity: number): string {
   return "bg-yellow-400";
 }
 
+function formatReportMarkdown(report: Record<string, unknown>): string {
+  const v = report.vessel as Record<string, unknown>;
+  const pos = report.latest_position as Record<string, unknown> | null;
+  const risk = report.risk_assessment as Record<string, unknown>;
+  const signals = report.anomaly_signals as Record<string, unknown>[];
+  const trail = report.position_trail as Record<string, unknown>[];
+  const audit = report.alert_audit_trail as Record<string, unknown>[];
+  const verifications = report.verification_requests as Record<string, unknown>[];
+
+  let md = `# Incident Report: ${v.name}\n`;
+  md += `**Generated:** ${report.generated_at}\n\n`;
+
+  md += `## Vessel Details\n`;
+  md += `| Field | Value |\n|---|---|\n`;
+  md += `| Name | ${v.name} |\n`;
+  md += `| MMSI | ${v.mmsi} |\n`;
+  md += `| IMO | ${v.imo || "N/A"} |\n`;
+  md += `| Type | ${v.vessel_type} |\n`;
+  md += `| Flag | ${v.flag_state} |\n`;
+  md += `| Length | ${v.length ? v.length + "m" : "N/A"} |\n`;
+  md += `| Beam | ${v.beam ? v.beam + "m" : "N/A"} |\n`;
+  md += `| Draft | ${v.draft ? v.draft + "m" : "N/A"} |\n\n`;
+
+  md += `## Risk Assessment\n`;
+  md += `- **Score:** ${risk.score} / 100\n`;
+  md += `- **Recommended Action:** ${risk.recommended_action}\n`;
+  if (risk.explanation) md += `- **Explanation:** ${risk.explanation}\n`;
+  md += `\n`;
+
+  if (pos) {
+    md += `## Latest Position\n`;
+    md += `- **Latitude:** ${pos.latitude}\n`;
+    md += `- **Longitude:** ${pos.longitude}\n`;
+    md += `- **Speed:** ${pos.speed_over_ground != null ? pos.speed_over_ground + " kt" : "N/A"}\n`;
+    md += `- **Course:** ${pos.course_over_ground != null ? pos.course_over_ground + "\u00B0" : "N/A"}\n`;
+    md += `- **Timestamp:** ${pos.timestamp}\n\n`;
+  }
+
+  if (signals && signals.length > 0) {
+    md += `## Anomaly Signals (${signals.length})\n`;
+    for (const s of signals) {
+      md += `### ${(s.anomaly_type as string).replace(/_/g, " ").toUpperCase()}\n`;
+      md += `- **Severity:** ${((s.severity as number) * 100).toFixed(0)}%\n`;
+      md += `- **Description:** ${s.description}\n\n`;
+    }
+  }
+
+  if (trail && trail.length > 0) {
+    md += `## Position Trail (${trail.length} points)\n`;
+    md += `| Timestamp | Lat | Lon | Speed | Course |\n|---|---|---|---|---|\n`;
+    for (const p of trail) {
+      md += `| ${p.timestamp} | ${p.latitude} | ${p.longitude} | ${p.speed_over_ground ?? "N/A"} | ${p.course_over_ground ?? "N/A"} |\n`;
+    }
+    md += `\n`;
+  }
+
+  if (audit && audit.length > 0) {
+    md += `## Alert Audit Trail\n`;
+    for (const e of audit) {
+      md += `- **${e.timestamp}** \u2014 ${e.action}${e.details ? ": " + e.details : ""}\n`;
+    }
+    md += `\n`;
+  }
+
+  if (report.operator_notes) {
+    md += `## Operator Notes\n${report.operator_notes}\n\n`;
+  }
+
+  if (verifications && verifications.length > 0) {
+    md += `## Verification Requests\n`;
+    for (const vr of verifications) {
+      md += `- **${vr.asset_type}** (${vr.asset_id}) \u2014 Status: ${vr.status}, Created: ${vr.created_at}\n`;
+    }
+    md += `\n`;
+  }
+
+  return md;
+}
+
 export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint }: VesselDetailProps) {
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+
+  const handleExportReport = useCallback(async () => {
+    setExportLoading(true);
+    try {
+      const report = await api.getVesselReport(vessel.id);
+      const markdown = formatReportMarkdown(report);
+      const blob = new Blob([markdown], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const date = new Date().toISOString().slice(0, 10);
+      const safeName = vessel.name.replace(/[^a-zA-Z0-9]/g, "_");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeName}_incident_report_${date}.md`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Export report failed:", e);
+    } finally {
+      setExportLoading(false);
+    }
+  }, [vessel.id, vessel.name]);
 
   // Alert action state
   const [alertStatus, setAlertStatus] = useState<string | null>(null);
@@ -131,6 +234,13 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
               )}
             </div>
           </div>
+          <button
+            onClick={handleExportReport}
+            disabled={exportLoading}
+            className="text-[10px] text-slate-500 hover:text-blue-400 uppercase tracking-wider transition-colors disabled:opacity-50"
+          >
+            {exportLoading ? "Exporting..." : "Export Report"}
+          </button>
           <button
             onClick={onClose}
             className="w-7 h-7 rounded-lg bg-[#111827] border border-[#1a2235] flex items-center justify-center text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors"

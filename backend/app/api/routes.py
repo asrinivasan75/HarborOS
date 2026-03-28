@@ -184,6 +184,126 @@ def get_vessel_detail(vessel_id: str, db: Session = Depends(get_db)):
 
 # ── Risk Assessment ────────────────────────────────────
 
+@router.get("/vessels/{vessel_id}/report")
+def get_vessel_report(vessel_id: str, db: Session = Depends(get_db)):
+    """Generate a comprehensive incident report for a vessel."""
+    vessel = db.query(VesselORM).filter(VesselORM.id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    # Latest position
+    positions = (
+        db.query(PositionReportORM)
+        .filter(PositionReportORM.vessel_id == vessel_id)
+        .order_by(PositionReportORM.timestamp.desc())
+        .limit(50)
+        .all()
+    )
+    latest_position = None
+    if positions:
+        p = positions[0]
+        latest_position = {
+            "timestamp": p.timestamp.isoformat() if p.timestamp else None,
+            "latitude": p.latitude,
+            "longitude": p.longitude,
+            "speed_over_ground": p.speed_over_ground,
+            "course_over_ground": p.course_over_ground,
+            "heading": p.heading,
+        }
+
+    # Position trail (chronological order, last 50)
+    position_trail = [
+        {
+            "timestamp": p.timestamp.isoformat() if p.timestamp else None,
+            "latitude": p.latitude,
+            "longitude": p.longitude,
+            "speed_over_ground": p.speed_over_ground,
+            "course_over_ground": p.course_over_ground,
+            "heading": p.heading,
+        }
+        for p in reversed(positions)
+    ]
+
+    # Risk assessment and anomaly signals from active alert
+    alert = (
+        db.query(AlertORM)
+        .filter(AlertORM.vessel_id == vessel_id, AlertORM.status == "active")
+        .first()
+    )
+    risk_assessment = {
+        "score": alert.risk_score if alert else 0,
+        "recommended_action": alert.recommended_action if alert else "ignore",
+        "explanation": alert.explanation if alert else None,
+    }
+    anomaly_signals = []
+    if alert and alert.anomaly_signals_json:
+        anomaly_signals = json.loads(alert.anomaly_signals_json)
+
+    # Operator notes
+    operator_notes = alert.operator_notes if alert else None
+
+    # Alert audit trail
+    alert_audit_trail = []
+    if alert:
+        audit_entries = (
+            db.query(AlertAuditORM)
+            .filter(AlertAuditORM.alert_id == alert.id)
+            .order_by(AlertAuditORM.timestamp.desc())
+            .all()
+        )
+        alert_audit_trail = [
+            {
+                "action": e.action,
+                "details": e.details,
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+            }
+            for e in audit_entries
+        ]
+
+    # Verification requests
+    verification_requests = []
+    vrs = (
+        db.query(VerificationRequestORM)
+        .filter(VerificationRequestORM.vessel_id == vessel_id)
+        .order_by(VerificationRequestORM.created_at.desc())
+        .all()
+    )
+    for vr in vrs:
+        verification_requests.append({
+            "id": vr.id,
+            "status": vr.status,
+            "asset_type": vr.asset_type,
+            "asset_id": vr.asset_id,
+            "created_at": vr.created_at.isoformat() if vr.created_at else None,
+            "updated_at": vr.updated_at.isoformat() if vr.updated_at else None,
+            "result_confidence": vr.result_confidence,
+            "result_notes": vr.result_notes,
+            "result_media_ref": vr.result_media_ref,
+        })
+
+    return {
+        "vessel": {
+            "id": vessel.id,
+            "name": vessel.name,
+            "mmsi": vessel.mmsi,
+            "imo": vessel.imo,
+            "vessel_type": vessel.vessel_type,
+            "flag_state": vessel.flag_state,
+            "length": vessel.length,
+            "beam": vessel.beam,
+            "draft": vessel.draft,
+        },
+        "latest_position": latest_position,
+        "risk_assessment": risk_assessment,
+        "anomaly_signals": anomaly_signals,
+        "position_trail": position_trail,
+        "alert_audit_trail": alert_audit_trail,
+        "operator_notes": operator_notes,
+        "verification_requests": verification_requests,
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+
 @router.get("/vessels/{vessel_id}/risk", response_model=RiskAssessmentSchema)
 def get_vessel_risk(vessel_id: str, db: Session = Depends(get_db)):
     """Compute fresh risk assessment for a vessel."""

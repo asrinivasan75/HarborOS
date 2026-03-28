@@ -192,4 +192,6 @@ export const api = {
   getVerificationRequest: (id: string) =>
     fetchAPI<VerificationRequest>(`/verification-requests/${id}`),
   getIngestionStatus: () => fetchAPI<IngestionStatus>("/ingestion/status"),
+  getVesselReport: (vesselId: string) =>
+    fetchAPI<Record<string, unknown>>(`/vessels/${vesselId}/report`),
 };
