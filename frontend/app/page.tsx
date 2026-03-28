@@ -110,12 +110,12 @@ export default function Dashboard() {
   }, [regions]);
 
   const handleSelectVessel = useCallback(async (vesselId: string) => {
+    setSatelliteFootprint(null); // Clear previous footprint
     try {
       const detail = await api.getVesselDetail(vesselId);
       setSelectedVessel(detail);
       const matchingAlert = alerts.find((a) => a.vessel_id === vesselId);
       setSelectedAlertId(matchingAlert?.id ?? null);
-      // Fly to vessel position
       if (detail.latest_position) {
         setMapTarget({
           center: [detail.latest_position.longitude, detail.latest_position.latitude],
@@ -158,6 +158,7 @@ export default function Dashboard() {
   const handleCloseDetail = useCallback(() => {
     setSelectedVessel(null);
     setSelectedAlertId(null);
+    setSatelliteFootprint(null);
   }, []);
 
   if (loading) {

@@ -550,29 +550,57 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
       {isSatellite && isComplete && vesselPosition && (
         <div className="bg-[#111827] rounded-lg border border-cyan-500/20 overflow-hidden">
           {/* Simulated imagery thumbnail */}
-          <div className="h-32 bg-gradient-to-br from-cyan-900/30 via-teal-900/20 to-blue-900/30 relative flex items-center justify-center">
-            <div className="absolute inset-0 opacity-20" style={{
-              backgroundImage: "linear-gradient(45deg, transparent 30%, rgba(6,182,212,0.1) 50%, transparent 70%)",
-              backgroundSize: "20px 20px",
-            }} />
-            <div className="text-center z-10">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mx-auto text-cyan-400 mb-1.5">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-              </svg>
-              <p className="text-[10px] text-cyan-400 font-mono">{vesselPosition.latitude.toFixed(4)}N, {Math.abs(vesselPosition.longitude).toFixed(4)}{vesselPosition.longitude >= 0 ? "E" : "W"}</p>
-              <p className="text-[9px] text-cyan-500/60 mt-0.5">10m True Color Composite</p>
-            </div>
-            {/* Crosshair overlay */}
+          <div className="h-40 relative overflow-hidden">
+            {/* Real satellite imagery tile from Esri for this location */}
+            {(() => {
+              // Convert lat/lng to tile coordinates at zoom 14
+              const z = 14;
+              const lat = vesselPosition.latitude;
+              const lng = vesselPosition.longitude;
+              const x = Math.floor(((lng + 180) / 360) * Math.pow(2, z));
+              const latRad = (lat * Math.PI) / 180;
+              const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * Math.pow(2, z));
+              // Load a 3x3 grid of tiles centered on the vessel for better coverage
+              const tiles = [];
+              for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                  tiles.push({ tx: x + dx, ty: y + dy, dx, dy });
+                }
+              }
+              return (
+                <div className="absolute inset-0" style={{ imageRendering: "auto" }}>
+                  {tiles.map((t, i) => (
+                    <img
+                      key={i}
+                      src={`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${t.ty}/${t.tx}`}
+                      alt=""
+                      className="absolute"
+                      style={{
+                        width: "33.34%",
+                        height: "33.34%",
+                        left: `${(t.dx + 1) * 33.34}%`,
+                        top: `${(t.dy + 1) * 33.34}%`,
+                        objectFit: "cover",
+                      }}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
+            {/* Overlay with coordinates */}
+            <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-transparent to-transparent" />
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-8 h-px bg-cyan-500/30" />
-              <div className="absolute h-8 w-px bg-cyan-500/30" />
+              <div className="w-12 h-px bg-cyan-400/50" />
+              <div className="absolute h-12 w-px bg-cyan-400/50" />
+              <div className="absolute w-6 h-6 border border-cyan-400/40 rounded-full" />
             </div>
-            {/* Corner brackets */}
-            <div className="absolute top-2 left-2 w-3 h-3 border-t border-l border-cyan-500/40" />
-            <div className="absolute top-2 right-2 w-3 h-3 border-t border-r border-cyan-500/40" />
-            <div className="absolute bottom-2 left-2 w-3 h-3 border-b border-l border-cyan-500/40" />
-            <div className="absolute bottom-2 right-2 w-3 h-3 border-b border-r border-cyan-500/40" />
+            <div className="absolute top-2 left-2 w-3 h-3 border-t border-l border-cyan-400/50" />
+            <div className="absolute top-2 right-2 w-3 h-3 border-t border-r border-cyan-400/50" />
+            <div className="absolute bottom-2 left-2 w-3 h-3 border-b border-l border-cyan-400/50" />
+            <div className="absolute bottom-2 right-2 w-3 h-3 border-b border-r border-cyan-400/50" />
+            <div className="absolute bottom-2 left-0 right-0 text-center">
+              <p className="text-[10px] text-cyan-300 font-mono drop-shadow-lg">{vesselPosition.latitude.toFixed(4)}N, {Math.abs(vesselPosition.longitude).toFixed(4)}{vesselPosition.longitude >= 0 ? "E" : "W"}</p>
+            </div>
           </div>
           <div className="p-3">
             <div className="flex items-center justify-between mb-1">
