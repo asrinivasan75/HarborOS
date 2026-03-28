@@ -218,10 +218,9 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
       // Suppress tile loading errors (403s from tile providers are normal)
     });
 
-    map.addControl(new maplibregl.NavigationControl(), "top-right");
-
     map.on("load", () => {
       mapRef.current = map;
+      map.addControl(new maplibregl.NavigationControl(), "top-right");
 
       geofences.forEach((gf) => {
         const color = geofenceColor(gf.zone_type);
