@@ -572,7 +572,7 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
                   {tiles.map((t, i) => (
                     <img
                       key={i}
-                      src={`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${t.ty}/${t.tx}`}
+                      src={`https://mt1.google.com/vt/lyrs=s&x=${t.tx}&y=${t.ty}&z=${z}`}
                       alt=""
                       className="absolute"
                       style={{

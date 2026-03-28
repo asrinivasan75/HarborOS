@@ -82,11 +82,14 @@ function buildMapStyle(baseMap: BaseMap): maplibregl.StyleSpecification {
         "satellite": {
           type: "raster",
           tiles: [
-            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            "https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+            "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+            "https://mt2.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+            "https://mt3.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
           ],
           tileSize: 256,
-          maxzoom: 17,
-          attribution: "&copy; Esri, Maxar, Earthstar Geographics",
+          maxzoom: 20,
+          attribution: "&copy; Google",
         },
         "carto-labels": {
           type: "raster",
