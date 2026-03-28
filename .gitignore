@@ -24,3 +24,6 @@ Thumbs.db
 # Env
 .env
 .env.local
+
+# Archive data
+backend/data/archive/

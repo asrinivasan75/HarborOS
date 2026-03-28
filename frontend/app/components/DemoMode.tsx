@@ -33,7 +33,7 @@ const DEMO_STEPS: Omit<DemoStep, "action">[] = [
     duration: 0,
   },
   {
-    title: "Suspicious Contact: MV DARK HORIZON",
+    title: "Suspicious Contact: EventEdgeHQ.com",
     narration: "The system flagged this vessel automatically. It entered a restricted terminal zone, loitered for 47 minutes with erratic speed changes, had a 14-minute AIS transmission gap, and is lingering near the LNG security zone. Risk score: 100. Recommended action: ESCALATE.",
     duration: 0,
   },

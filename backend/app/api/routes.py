@@ -547,3 +547,22 @@ async def stop_ingestion():
     service = get_ingestion_service()
     await service.stop()
     return {"status": "stopped", "message": "Live AIS ingestion stopped"}
+
+
+# ── Data Archive ───────────────────────────────────────
+
+@router.get("/archive/stats")
+def archive_stats():
+    """Get stats on archived position data (Parquet files)."""
+    from app.services.archive_service import get_archive_stats
+    return get_archive_stats()
+
+
+@router.post("/archive/run")
+def run_archive(
+    retention_minutes: int = Query(30, description="Keep this many minutes in SQLite"),
+    db: Session = Depends(get_db),
+):
+    """Manually trigger archival of old position data to Parquet."""
+    from app.services.archive_service import archive_old_positions
+    return archive_old_positions(retention_minutes=retention_minutes, db=db)

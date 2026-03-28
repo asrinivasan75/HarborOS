@@ -242,11 +242,12 @@ class IngestionService:
                     if alerts:
                         logger.info(f"Alert scan: {len(alerts)} alerts generated/updated")
 
-                    # Prune old data every 4th cycle (~2 minutes)
-                    if cycle % 4 == 0:
-                        pruned = self._prune_old_data(db)
-                        if pruned > 0:
-                            logger.info(f"Pruned {pruned} old position reports")
+                    # Archive old data every 10th cycle (~5 minutes)
+                    if cycle % 10 == 0:
+                        from app.services.archive_service import archive_old_positions
+                        result = archive_old_positions(db=db)
+                        if result["archived"] > 0:
+                            logger.info(f"Archived {result['archived']} positions to Parquet")
                 except Exception as e:
                     logger.error(f"Alert generation error: {e}")
                 finally:
@@ -255,52 +256,6 @@ class IngestionService:
         except asyncio.CancelledError:
             pass
 
-    def _prune_old_data(self, db: Session, max_positions_per_vessel: int = 60) -> int:
-        """Keep only the most recent N position reports per vessel.
-
-        This prevents the DB from growing unbounded during live ingestion.
-        60 positions at ~2.5min intervals = ~2.5 hours of track history,
-        which is enough for all anomaly detectors.
-        """
-        from sqlalchemy import func
-
-        pruned_total = 0
-
-        # Find vessels with too many positions
-        overfull = (
-            db.query(
-                PositionReportORM.vessel_id,
-                func.count(PositionReportORM.id).label("ct"),
-            )
-            .group_by(PositionReportORM.vessel_id)
-            .having(func.count(PositionReportORM.id) > max_positions_per_vessel)
-            .all()
-        )
-
-        for vessel_id, count in overfull:
-            # Find the timestamp cutoff (keep the newest N)
-            cutoff_row = (
-                db.query(PositionReportORM.timestamp)
-                .filter(PositionReportORM.vessel_id == vessel_id)
-                .order_by(PositionReportORM.timestamp.desc())
-                .offset(max_positions_per_vessel)
-                .first()
-            )
-            if cutoff_row:
-                deleted = (
-                    db.query(PositionReportORM)
-                    .filter(
-                        PositionReportORM.vessel_id == vessel_id,
-                        PositionReportORM.timestamp <= cutoff_row[0],
-                    )
-                    .delete()
-                )
-                pruned_total += deleted
-
-        if pruned_total > 0:
-            db.commit()
-
-        return pruned_total
 
 
 # Singleton instance
