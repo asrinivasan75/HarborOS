@@ -7,6 +7,8 @@ import MapView from "@/app/components/MapView";
 import VesselDetailPanel from "@/app/components/VesselDetail";
 import VesselCompare from "@/app/components/VesselCompare";
 import DemoMode from "@/app/components/DemoMode";
+import RegionSummary from "@/app/components/RegionSummary";
+import Timeline from "@/app/components/Timeline";
 import type { SatelliteFootprint } from "@/app/components/MapView";
 import { api } from "@/app/lib/api";
 import type { Vessel, VesselDetail, Alert, Geofence, IngestionStatus, Region } from "@/app/lib/api";
@@ -234,6 +236,11 @@ export default function Dashboard() {
         activeRegion={activeRegion}
         onRegionChange={handleRegionChange}
       />
+      <RegionSummary
+        regions={regions}
+        activeRegion={activeRegion}
+        onSelectRegion={handleRegionChange}
+      />
       <div className="flex-1 flex overflow-hidden">
         <AlertFeed
           alerts={alerts}
@@ -268,6 +275,7 @@ export default function Dashboard() {
           />
         )}
       </div>
+      <Timeline onTimeChange={() => {}} />
       {comparedVessels.length > 0 && (
         <VesselCompare
           vessels={comparedVessels}
