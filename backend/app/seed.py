@@ -322,6 +322,279 @@ GEOFENCES = [
             ]]
         }
     },
+
+    # ── Black Sea ─────────────────────────────────────────
+
+    {
+        "id": "gf-odesa-port-restricted",
+        "name": "Odesa Port Restricted Zone",
+        "zone_type": "restricted",
+        "severity": "high",
+        "description": "Restricted area around Odesa commercial port and grain terminal",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [30.720, 46.490],
+                [30.760, 46.490],
+                [30.760, 46.475],
+                [30.720, 46.475],
+                [30.720, 46.490],
+            ]]
+        }
+    },
+    {
+        "id": "gf-sevastopol-naval-security",
+        "name": "Sevastopol Naval Base Security Zone",
+        "zone_type": "security",
+        "severity": "high",
+        "description": "Security exclusion zone around Sevastopol naval base and harbor",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [33.490, 44.635],
+                [33.555, 44.635],
+                [33.555, 44.600],
+                [33.490, 44.600],
+                [33.490, 44.635],
+            ]]
+        }
+    },
+    {
+        "id": "gf-kerch-strait-shipping",
+        "name": "Kerch Strait Shipping Lane",
+        "zone_type": "shipping_lane",
+        "severity": "medium",
+        "description": "Main transit corridor through the Kerch Strait connecting Black Sea and Sea of Azov",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [36.540, 45.380],
+                [36.660, 45.380],
+                [36.660, 45.320],
+                [36.540, 45.320],
+                [36.540, 45.380],
+            ]]
+        }
+    },
+    {
+        "id": "gf-bosphorus-approach",
+        "name": "Bosphorus Northern Approach Zone",
+        "zone_type": "shipping_lane",
+        "severity": "medium",
+        "description": "Traffic approach zone at the Black Sea entrance to the Bosphorus Strait",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [29.060, 41.230],
+                [29.150, 41.230],
+                [29.150, 41.170],
+                [29.060, 41.170],
+                [29.060, 41.230],
+            ]]
+        }
+    },
+
+    # ── Strait of Hormuz ─────────────────────────────────
+
+    {
+        "id": "gf-hormuz-tss",
+        "name": "Hormuz Traffic Separation Scheme",
+        "zone_type": "shipping_lane",
+        "severity": "high",
+        "description": "IMO-designated traffic separation scheme in the Strait of Hormuz",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [56.400, 26.550],
+                [56.600, 26.550],
+                [56.600, 26.450],
+                [56.400, 26.450],
+                [56.400, 26.550],
+            ]]
+        }
+    },
+    {
+        "id": "gf-bandar-abbas-restricted",
+        "name": "Bandar Abbas Port Restricted Zone",
+        "zone_type": "restricted",
+        "severity": "high",
+        "description": "Restricted zone around Bandar Abbas port and naval facility",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [56.240, 27.200],
+                [56.320, 27.200],
+                [56.320, 27.160],
+                [56.240, 27.160],
+                [56.240, 27.200],
+            ]]
+        }
+    },
+
+    # ── Taiwan Strait ─────────────────────────────────────
+
+    {
+        "id": "gf-taipei-port-security",
+        "name": "Taipei Port (Keelung) Security Zone",
+        "zone_type": "security",
+        "severity": "medium",
+        "description": "Port security zone around Taipei/Keelung harbor complex",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [121.420, 25.170],
+                [121.480, 25.170],
+                [121.480, 25.130],
+                [121.420, 25.130],
+                [121.420, 25.170],
+            ]]
+        }
+    },
+    {
+        "id": "gf-taiwan-strait-median",
+        "name": "Taiwan Strait Median Line Zone",
+        "zone_type": "security",
+        "severity": "high",
+        "description": "Sensitive median line zone in the Taiwan Strait — military monitoring area",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [119.380, 24.560],
+                [119.620, 24.560],
+                [119.620, 24.440],
+                [119.380, 24.440],
+                [119.380, 24.560],
+            ]]
+        }
+    },
+    {
+        "id": "gf-kaohsiung-port-restricted",
+        "name": "Kaohsiung Port Restricted Zone",
+        "zone_type": "restricted",
+        "severity": "medium",
+        "description": "Restricted zone around Kaohsiung container port and naval base",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [120.250, 22.625],
+                [120.310, 22.625],
+                [120.310, 22.575],
+                [120.250, 22.575],
+                [120.250, 22.625],
+            ]]
+        }
+    },
+
+    # ── Strait of Malacca ────────────────────────────────
+
+    {
+        "id": "gf-singapore-strait-tss",
+        "name": "Singapore Strait Traffic Separation Scheme",
+        "zone_type": "shipping_lane",
+        "severity": "high",
+        "description": "IMO-designated TSS in the Singapore Strait — one of the world's busiest waterways",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [103.740, 1.280],
+                [103.860, 1.280],
+                [103.860, 1.220],
+                [103.740, 1.220],
+                [103.740, 1.280],
+            ]]
+        }
+    },
+    {
+        "id": "gf-port-klang-restricted",
+        "name": "Port Klang Restricted Zone",
+        "zone_type": "restricted",
+        "severity": "medium",
+        "description": "Restricted zone around Port Klang container terminal and approaches",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [101.310, 3.030],
+                [101.390, 3.030],
+                [101.390, 2.970],
+                [101.310, 2.970],
+                [101.310, 3.030],
+            ]]
+        }
+    },
+
+    # ── English Channel ──────────────────────────────────
+
+    {
+        "id": "gf-dover-strait-tss",
+        "name": "Dover Strait Traffic Separation Scheme",
+        "zone_type": "shipping_lane",
+        "severity": "high",
+        "description": "IMO-designated TSS in the Dover Strait — mandatory reporting for vessels over 300 GT",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [1.340, 51.080],
+                [1.460, 51.080],
+                [1.460, 51.020],
+                [1.340, 51.020],
+                [1.340, 51.080],
+            ]]
+        }
+    },
+    {
+        "id": "gf-southampton-approach",
+        "name": "Southampton Approach Zone",
+        "zone_type": "shipping_lane",
+        "severity": "medium",
+        "description": "Precautionary area on the approach to Southampton port via the Solent",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [-1.390, 50.875],
+                [-1.310, 50.875],
+                [-1.310, 50.825],
+                [-1.390, 50.825],
+                [-1.390, 50.875],
+            ]]
+        }
+    },
+
+    # ── Eastern Mediterranean ────────────────────────────
+
+    {
+        "id": "gf-tartus-naval-security",
+        "name": "Tartus Naval Base Security Zone",
+        "zone_type": "security",
+        "severity": "high",
+        "description": "Security exclusion zone around Tartus naval facility",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [35.840, 34.920],
+                [35.920, 34.920],
+                [35.920, 34.880],
+                [35.840, 34.880],
+                [35.840, 34.920],
+            ]]
+        }
+    },
+    {
+        "id": "gf-limassol-port",
+        "name": "Limassol Port Zone",
+        "zone_type": "restricted",
+        "severity": "medium",
+        "description": "Restricted zone around Limassol port and new container terminal",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [32.995, 34.670],
+                [33.065, 34.670],
+                [33.065, 34.630],
+                [32.995, 34.630],
+                [32.995, 34.670],
+            ]]
+        }
+    },
 ]
 
 

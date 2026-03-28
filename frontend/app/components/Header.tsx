@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { Region } from "@/app/lib/api";
 
 interface HeaderProps {
@@ -57,6 +58,15 @@ export default function Header({
         )}
 
         <div className="h-6 w-px bg-[#1a2235] mx-2" />
+
+        <Link
+          href="/analytics"
+          className="text-[10px] text-slate-500 hover:text-blue-400 transition-colors font-medium tracking-wider uppercase px-2 py-1.5 rounded-lg hover:bg-blue-500/10"
+        >
+          Analytics
+        </Link>
+
+        <div className="h-6 w-px bg-[#1a2235] mx-1" />
 
         {isLive ? (
           <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-1.5">

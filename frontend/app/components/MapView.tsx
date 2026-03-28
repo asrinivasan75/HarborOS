@@ -32,6 +32,37 @@ function geofenceColor(zoneType: string): string {
   }
 }
 
+/** Returns an SVG path `d` attribute and viewBox for each vessel type. */
+function vesselSvgPath(vesselType: string): { d: string; viewBox: string } {
+  switch (vesselType) {
+    // Cargo: rectangle with pointed bow (container ship)
+    case "cargo":
+      return { d: "M6 22 L6 6 L12 2 L18 6 L18 22 Z", viewBox: "0 0 24 24" };
+    // Tanker: wider rectangle with rounded bow
+    case "tanker":
+      return { d: "M4 22 L4 8 Q4 4 12 2 Q20 4 20 8 L20 22 Z", viewBox: "0 0 24 24" };
+    // Fishing: diamond shape
+    case "fishing":
+      return { d: "M12 2 L20 12 L12 22 L4 12 Z", viewBox: "0 0 24 24" };
+    // Tug: small square with pointed top
+    case "tug":
+      return { d: "M7 20 L7 8 L12 3 L17 8 L17 20 Z", viewBox: "0 0 24 24" };
+    // Passenger: tall narrow rectangle (cruise ship)
+    case "passenger":
+      return { d: "M8 22 L8 5 L10 2 L14 2 L16 5 L16 22 Z", viewBox: "0 0 24 24" };
+    // Law enforcement / military: triangle with flat base (patrol boat)
+    case "law_enforcement":
+    case "military":
+      return { d: "M12 2 L22 20 L2 20 Z", viewBox: "0 0 24 24" };
+    // Pleasure craft: circle
+    case "pleasure":
+      return { d: "M12 2 A10 10 0 1 1 12 22 A10 10 0 1 1 12 2 Z", viewBox: "0 0 24 24" };
+    // Default / other: original arrow/chevron
+    default:
+      return { d: "M12 2 L4 20 L12 15 L20 20 Z", viewBox: "0 0 24 24" };
+  }
+}
+
 export default function MapView({ vessels, geofences, selectedVesselId, onSelectVessel, flyTo }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -64,8 +95,9 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
 
       const strokeColor = isSelected ? "#e2e8f0" : "rgba(0,0,0,0.5)";
       const strokeWidth = isSelected ? 1.5 : 1;
-      el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}">
-        <path d="M12 2 L4 20 L12 15 L20 20 Z" fill="${color}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round"/>
+      const { d: pathD, viewBox } = vesselSvgPath(vessel.vessel_type ?? "other");
+      el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${size}" height="${size}">
+        <path d="${pathD}" fill="${color}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round"/>
       </svg>`;
 
       if (score >= 70) {

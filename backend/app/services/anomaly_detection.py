@@ -209,6 +209,64 @@ def detect_ais_gap(
     )]
 
 
+def detect_dark_vessel(
+    vessel: VesselORM,
+    positions: list[PositionReportORM],
+    **kwargs,
+) -> list[AnomalySignalSchema]:
+    """Detect vessels that have stopped transmitting AIS entirely.
+
+    Unlike detect_ais_gap (which finds gaps within track history), this checks
+    whether the vessel's most recent transmission is stale relative to the
+    current time — i.e. the vessel has gone dark.
+    """
+    if len(positions) < 4:
+        return []
+
+    now = datetime.utcnow()
+    last_report = positions[-1].timestamp
+
+    minutes_since_last = (now - last_report).total_seconds() / 60
+    if minutes_since_last < 15:
+        return []
+
+    # Check that the vessel was transmitting regularly before going dark:
+    # need at least 3 consecutive intervals under 5 minutes.
+    regular_count = 0
+    intervals = []
+    for i in range(1, len(positions)):
+        interval_min = (positions[i].timestamp - positions[i - 1].timestamp).total_seconds() / 60
+        intervals.append(interval_min)
+        if interval_min < 5:
+            regular_count += 1
+
+    if regular_count < 3:
+        return []
+
+    # Compute average transmission interval from the regular intervals
+    regular_intervals = [iv for iv in intervals if iv < 5]
+    avg_interval = sum(regular_intervals) / len(regular_intervals)
+
+    # Severity scales with dark duration
+    if minutes_since_last >= 60:
+        severity = 0.85
+    elif minutes_since_last >= 30:
+        severity = 0.6
+    else:
+        severity = 0.4
+
+    return [AnomalySignalSchema(
+        anomaly_type=AnomalyType.AIS_GAP,
+        severity=severity,
+        description=f"Vessel went dark: last transmission {int(minutes_since_last)} minutes ago (was transmitting every {avg_interval:.1f} min)",
+        details={
+            "minutes_since_last_report": int(minutes_since_last),
+            "avg_transmission_interval_min": round(avg_interval, 1),
+            "regular_interval_count": regular_count,
+        },
+    )]
+
+
 def detect_zone_lingering(
     vessel: VesselORM,
     positions: list[PositionReportORM],
@@ -466,6 +524,7 @@ BASIC_DETECTORS = [
     detect_ais_gap,
     detect_zone_lingering,
     detect_kinematic_implausibility,
+    detect_dark_vessel,
 ]
 
 

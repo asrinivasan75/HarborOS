@@ -117,6 +117,7 @@ export interface IngestionStatus {
     static_data: number;
     errors: number;
     connected_since: string | null;
+    regions?: string[];
   };
 }
 
