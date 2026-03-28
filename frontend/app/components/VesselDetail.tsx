@@ -461,40 +461,43 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
       </div>
 
       {/* Satellite: Last pass imagery */}
-      {isSatellite && satData?.last_pass && (
-        <div className="bg-[#111827] rounded-lg p-4 border border-[#1a2235]">
-          <div className="flex items-center gap-2 mb-2.5">
-            <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider">Last Available Imagery</span>
-            <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">{satData.last_pass.status}</span>
+      {isSatellite && satData?.last_pass && vesselPosition && (
+        <div className="bg-[#111827] rounded-lg border border-[#1a2235] overflow-hidden">
+          <SatThumbnail lat={vesselPosition.latitude} lng={vesselPosition.longitude} borderColor="border-slate-500/30" />
+          <div className="p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider">Last Available Imagery</span>
+              <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">{satData.last_pass.status}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+              <div>
+                <span className="text-slate-600">Acquired</span>
+                <span className="text-slate-300 ml-1 font-mono">
+                  {new Date(satData.last_pass.acquired).toLocaleDateString()}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-600">Satellite</span>
+                <span className="text-slate-300 ml-1 font-mono">{satData.last_pass.satellite}</span>
+              </div>
+              <div>
+                <span className="text-slate-600">Resolution</span>
+                <span className="text-slate-300 ml-1 font-mono">{satData.last_pass.resolution_m}m</span>
+              </div>
+              <div>
+                <span className="text-slate-600">Cloud cover</span>
+                <span className={`ml-1 font-mono ${satData.last_pass.cloud_cover_pct > 20 ? "text-yellow-400" : "text-slate-300"}`}>
+                  {satData.last_pass.cloud_cover_pct}%
+                </span>
+              </div>
+            </div>
+            {liveVr.result_confidence != null && (
+              <div className="mt-2 pt-2 border-t border-[#1a2235]">
+                <span className="text-[10px] text-slate-600">Confidence</span>
+                <span className="text-[10px] text-slate-300 font-mono ml-1">{(liveVr.result_confidence * 100).toFixed(0)}%</span>
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-2 text-[10px]">
-            <div>
-              <span className="text-slate-600">Acquired</span>
-              <span className="text-slate-300 ml-1 font-mono">
-                {new Date(satData.last_pass.acquired).toLocaleDateString()}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-600">Satellite</span>
-              <span className="text-slate-300 ml-1 font-mono">{satData.last_pass.satellite}</span>
-            </div>
-            <div>
-              <span className="text-slate-600">Resolution</span>
-              <span className="text-slate-300 ml-1 font-mono">{satData.last_pass.resolution_m}m</span>
-            </div>
-            <div>
-              <span className="text-slate-600">Cloud cover</span>
-              <span className={`ml-1 font-mono ${satData.last_pass.cloud_cover_pct > 20 ? "text-yellow-400" : "text-slate-300"}`}>
-                {satData.last_pass.cloud_cover_pct}%
-              </span>
-            </div>
-          </div>
-          {liveVr.result_confidence != null && (
-            <div className="mt-2 pt-2 border-t border-[#1a2235]">
-              <span className="text-[10px] text-slate-600">Confidence</span>
-              <span className="text-[10px] text-slate-300 font-mono ml-1">{(liveVr.result_confidence * 100).toFixed(0)}%</span>
-            </div>
-          )}
         </div>
       )}
 
@@ -549,59 +552,7 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
       {/* Imagery preview card — shown when pass completes */}
       {isSatellite && isComplete && vesselPosition && (
         <div className="bg-[#111827] rounded-lg border border-cyan-500/20 overflow-hidden">
-          {/* Simulated imagery thumbnail */}
-          <div className="h-40 relative overflow-hidden">
-            {/* Real satellite imagery tile from Esri for this location */}
-            {(() => {
-              // Convert lat/lng to tile coordinates at zoom 14
-              const z = 14;
-              const lat = vesselPosition.latitude;
-              const lng = vesselPosition.longitude;
-              const x = Math.floor(((lng + 180) / 360) * Math.pow(2, z));
-              const latRad = (lat * Math.PI) / 180;
-              const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * Math.pow(2, z));
-              // Load a 3x3 grid of tiles centered on the vessel for better coverage
-              const tiles = [];
-              for (let dx = -1; dx <= 1; dx++) {
-                for (let dy = -1; dy <= 1; dy++) {
-                  tiles.push({ tx: x + dx, ty: y + dy, dx, dy });
-                }
-              }
-              return (
-                <div className="absolute inset-0" style={{ imageRendering: "auto" }}>
-                  {tiles.map((t, i) => (
-                    <img
-                      key={i}
-                      src={`https://mt1.google.com/vt/lyrs=s&x=${t.tx}&y=${t.ty}&z=${z}`}
-                      alt=""
-                      className="absolute"
-                      style={{
-                        width: "33.34%",
-                        height: "33.34%",
-                        left: `${(t.dx + 1) * 33.34}%`,
-                        top: `${(t.dy + 1) * 33.34}%`,
-                        objectFit: "cover",
-                      }}
-                    />
-                  ))}
-                </div>
-              );
-            })()}
-            {/* Overlay with coordinates */}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-transparent to-transparent" />
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-12 h-px bg-cyan-400/50" />
-              <div className="absolute h-12 w-px bg-cyan-400/50" />
-              <div className="absolute w-6 h-6 border border-cyan-400/40 rounded-full" />
-            </div>
-            <div className="absolute top-2 left-2 w-3 h-3 border-t border-l border-cyan-400/50" />
-            <div className="absolute top-2 right-2 w-3 h-3 border-t border-r border-cyan-400/50" />
-            <div className="absolute bottom-2 left-2 w-3 h-3 border-b border-l border-cyan-400/50" />
-            <div className="absolute bottom-2 right-2 w-3 h-3 border-b border-r border-cyan-400/50" />
-            <div className="absolute bottom-2 left-0 right-0 text-center">
-              <p className="text-[10px] text-cyan-300 font-mono drop-shadow-lg">{vesselPosition.latitude.toFixed(4)}N, {Math.abs(vesselPosition.longitude).toFixed(4)}{vesselPosition.longitude >= 0 ? "E" : "W"}</p>
-            </div>
-          </div>
+          <SatThumbnail lat={vesselPosition.latitude} lng={vesselPosition.longitude} borderColor="border-cyan-400/50" />
           <div className="p-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[9px] text-cyan-400 font-semibold uppercase tracking-wider">Satellite Imagery</span>
@@ -616,6 +567,57 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SatThumbnail({ lat, lng, borderColor = "border-cyan-400/50" }: { lat: number; lng: number; borderColor?: string }) {
+  const z = 18;
+  const x = Math.floor(((lng + 180) / 360) * Math.pow(2, z));
+  const latRad = (lat * Math.PI) / 180;
+  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * Math.pow(2, z));
+
+  const tiles = [];
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      tiles.push({ tx: x + dx, ty: y + dy, dx, dy });
+    }
+  }
+
+  return (
+    <div className="h-44 relative overflow-hidden">
+      <div className="absolute inset-0">
+        {tiles.map((t, i) => (
+          <img
+            key={i}
+            src={`https://mt${i % 4}.google.com/vt/lyrs=s&x=${t.tx}&y=${t.ty}&z=${z}`}
+            alt=""
+            className="absolute"
+            style={{
+              width: "33.34%",
+              height: "33.34%",
+              left: `${(t.dx + 1) * 33.34}%`,
+              top: `${(t.dy + 1) * 33.34}%`,
+              objectFit: "cover",
+            }}
+          />
+        ))}
+      </div>
+      <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/80 via-transparent to-transparent" />
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="w-12 h-px bg-cyan-400/50" />
+        <div className="absolute h-12 w-px bg-cyan-400/50" />
+        <div className="absolute w-5 h-5 border border-cyan-400/30 rounded-full" />
+      </div>
+      <div className={`absolute top-2 left-2 w-3 h-3 border-t border-l ${borderColor}`} />
+      <div className={`absolute top-2 right-2 w-3 h-3 border-t border-r ${borderColor}`} />
+      <div className={`absolute bottom-8 left-2 w-3 h-3 border-b border-l ${borderColor}`} />
+      <div className={`absolute bottom-8 right-2 w-3 h-3 border-b border-r ${borderColor}`} />
+      <div className="absolute bottom-2 left-0 right-0 text-center">
+        <p className="text-[10px] text-cyan-300 font-mono drop-shadow-lg">
+          {lat.toFixed(4)}N, {Math.abs(lng).toFixed(4)}{lng >= 0 ? "E" : "W"}
+        </p>
+      </div>
     </div>
   );
 }
