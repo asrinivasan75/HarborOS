@@ -9,6 +9,7 @@ interface AlertFeedProps {
   selectedAlertId: string | null;
   onSelectAlert: (alert: Alert) => void;
   onLoadMore: () => void;
+  onCompare?: (alert: Alert) => void;
 }
 
 type SortKey = "risk" | "name" | "time";
@@ -60,7 +61,7 @@ function sortAlerts(alerts: Alert[], key: SortKey, ascending: boolean): Alert[] 
   });
 }
 
-export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSelectAlert, onLoadMore }: AlertFeedProps) {
+export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSelectAlert, onLoadMore, onCompare }: AlertFeedProps) {
   const hasMore = alerts.length < alertsTotal;
   const [sortKey, setSortKey] = useState<SortKey>("risk");
   const [ascending, setAscending] = useState(false);
@@ -180,9 +181,22 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
                     {timeAgo(alert.created_at)}
                   </span>
                 </div>
-                <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">
-                  {alert.anomaly_signals.map((s) => s.anomaly_type.replace(/_/g, " ")).join(", ")}
-                </p>
+                <div className="flex items-end justify-between">
+                  <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed flex-1">
+                    {alert.anomaly_signals.map((s) => s.anomaly_type.replace(/_/g, " ")).join(", ")}
+                  </p>
+                  {onCompare && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onCompare(alert); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onCompare(alert); } }}
+                      className="ml-2 shrink-0 text-[9px] font-semibold uppercase tracking-wide text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 hover:border-blue-500/30 px-2 py-0.5 rounded-md transition-all cursor-pointer"
+                    >
+                      Compare
+                    </span>
+                  )}
+                </div>
               </button>
             );
           })
