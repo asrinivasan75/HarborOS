@@ -66,58 +66,78 @@ function vesselSvgPath(vesselType: string): { d: string; viewBox: string } {
 export default function MapView({ vessels, geofences, selectedVesselId, onSelectVessel, flyTo }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<maplibregl.Marker[]>([]);
+  const markersRef = useRef<Record<string, { marker: maplibregl.Marker; el: HTMLDivElement }>>({});
 
   const updateMarkers = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    const currentVesselIds = new Set<string>();
 
     vessels.forEach((vessel) => {
       if (!vessel.latest_position) return;
+      currentVesselIds.add(vessel.id);
 
       const score = vessel.risk_score ?? 0;
       const color = vesselColor(vessel.risk_score);
       const isSelected = vessel.id === selectedVesselId;
       const size = isSelected ? 22 : score >= 45 ? 18 : 14;
       const course = vessel.latest_position.course_over_ground ?? 0;
-
-      const el = document.createElement("div");
-      el.style.width = `${size}px`;
-      el.style.height = `${size}px`;
-      el.style.cursor = "pointer";
-      el.style.transition = "all 0.2s ease";
-      el.style.filter = `drop-shadow(0 0 ${score >= 70 ? "6" : score >= 45 ? "4" : "2"}px ${color}${score >= 45 ? "cc" : "80"})`;
-      // Rotate so the arrow points in the direction of travel (0 = north/up)
-      el.style.transform = `rotate(${course}deg)`;
-
       const strokeColor = isSelected ? "#e2e8f0" : "rgba(0,0,0,0.5)";
       const strokeWidth = isSelected ? 1.5 : 1;
       const { d: pathD, viewBox } = vesselSvgPath(vessel.vessel_type ?? "other");
-      el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${size}" height="${size}">
-        <path d="${pathD}" fill="${color}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round"/>
-      </svg>`;
 
-      if (score >= 70) {
-        el.style.animation = "pulse 2s infinite";
+      let markerData = markersRef.current[vessel.id];
+
+      // 1. Create marker if it doesn't exist
+      if (!markerData) {
+        const el = document.createElement("div");
+        el.style.cursor = "pointer";
+        // Do NOT add CSS transition to transform or it breaks map-pan tracking
+        
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onSelectVessel(vessel.id);
+        });
+
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([vessel.latest_position.longitude, vessel.latest_position.latitude])
+          .addTo(map);
+
+        markerData = { marker, el };
+        markersRef.current[vessel.id] = markerData;
       }
 
-      el.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onSelectVessel(vessel.id);
-      });
+      // 2. Update existing marker properties
+      const { marker, el } = markerData;
+      
+      el.style.width = `${size}px`;
+      el.style.height = `${size}px`;
+      // We apply MapLibre's Z-index fix visually using pointer-events:none if it was overlapping
+      el.style.filter = `drop-shadow(0 0 ${score >= 70 ? "6" : score >= 45 ? "4" : "2"}px ${color}${score >= 45 ? "cc" : "80"})`;
+      
+      // Keep it subtle: A simple animated wrapper for pulsing, and a separate SVG for rotating
+      el.innerHTML = `
+      <div style="width: 100%; height: 100%; ${score >= 70 ? 'animation: pulse 2s infinite;' : ''}">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${size}" height="${size}" style="transform: rotate(${course}deg); transition: transform 0.5s ease;">
+          <path d="${pathD}" fill="${color}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round" style="transition: fill 0.5s ease;"/>
+        </svg>
+      </div>`;
 
-      // Tooltip on hover
       el.title = `${vessel.name} (${vessel.mmsi})`;
 
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([vessel.latest_position.longitude, vessel.latest_position.latitude])
-        .addTo(map);
-
-      markersRef.current.push(marker);
+      // 3. Move marker to new coordinates
+      marker.setLngLat([vessel.latest_position.longitude, vessel.latest_position.latitude]);
     });
+
+    // 4. Clean up stale markers for vessels that left the region or disconnected
+    Object.keys(markersRef.current).forEach((vesselId) => {
+      if (!currentVesselIds.has(vesselId)) {
+        markersRef.current[vesselId].marker.remove();
+        delete markersRef.current[vesselId];
+      }
+    });
+
   }, [vessels, selectedVesselId, onSelectVessel]);
 
   useEffect(() => {
