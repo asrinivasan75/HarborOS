@@ -6,12 +6,20 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { api } from "@/app/lib/api";
 import type { Vessel, Geofence } from "@/app/lib/api";
 
+export interface SatelliteFootprint {
+  center: [number, number]; // [lng, lat]
+  satellite: string;
+  timestamp: string;
+  vesselName: string;
+}
+
 interface MapViewProps {
   vessels: Vessel[];
   geofences: Geofence[];
   selectedVesselId: string | null;
   onSelectVessel: (vesselId: string) => void;
   flyTo?: { center: [number, number]; zoom: number } | null;
+  satelliteFootprint?: SatelliteFootprint | null;
 }
 
 function vesselColor(score: number | null): string {
@@ -120,7 +128,7 @@ function buildMapStyle(baseMap: BaseMap): maplibregl.StyleSpecification {
   };
 }
 
-export default function MapView({ vessels, geofences, selectedVesselId, onSelectVessel, flyTo }: MapViewProps) {
+export default function MapView({ vessels, geofences, selectedVesselId, onSelectVessel, flyTo, satelliteFootprint }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
@@ -338,6 +346,78 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
       cancelled = true;
     };
   }, [selectedVesselId, vessels]);
+
+  // Satellite imagery footprint overlay
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Clean up previous footprint
+    if (map.getLayer("sat-footprint-fill")) map.removeLayer("sat-footprint-fill");
+    if (map.getLayer("sat-footprint-line")) map.removeLayer("sat-footprint-line");
+    if (map.getLayer("sat-footprint-label")) map.removeLayer("sat-footprint-label");
+    if (map.getSource("sat-footprint")) map.removeSource("sat-footprint");
+
+    if (!satelliteFootprint) return;
+
+    const [lng, lat] = satelliteFootprint.center;
+    // Sentinel-2 swath is ~290km wide. Show a ~15km footprint for demo scale.
+    const offset = 0.07; // ~7km in each direction at mid-latitudes
+    const polygon = [
+      [lng - offset, lat - offset * 0.7],
+      [lng + offset, lat - offset * 0.7],
+      [lng + offset, lat + offset * 0.7],
+      [lng - offset, lat + offset * 0.7],
+      [lng - offset, lat - offset * 0.7],
+    ];
+
+    map.addSource("sat-footprint", {
+      type: "geojson",
+      data: {
+        type: "Feature",
+        properties: {
+          label: `${satelliteFootprint.satellite} — ${new Date(satelliteFootprint.timestamp).toLocaleTimeString()}`,
+        },
+        geometry: { type: "Polygon", coordinates: [polygon] },
+      },
+    });
+
+    map.addLayer({
+      id: "sat-footprint-fill",
+      type: "fill",
+      source: "sat-footprint",
+      paint: {
+        "fill-color": "#06b6d4",
+        "fill-opacity": 0.12,
+      },
+    });
+
+    map.addLayer({
+      id: "sat-footprint-line",
+      type: "line",
+      source: "sat-footprint",
+      paint: {
+        "line-color": "#06b6d4",
+        "line-width": 2,
+        "line-dasharray": [6, 3],
+        "line-opacity": 0.7,
+      },
+    });
+
+    // Pulse the footprint opacity for 10 seconds to draw attention
+    let pulseFrame = 0;
+    const pulseInterval = setInterval(() => {
+      pulseFrame++;
+      const opacity = 0.08 + Math.sin(pulseFrame * 0.3) * 0.06;
+      try { map.setPaintProperty("sat-footprint-fill", "fill-opacity", opacity); } catch {}
+      if (pulseFrame > 60) { // ~10 seconds
+        clearInterval(pulseInterval);
+        try { map.setPaintProperty("sat-footprint-fill", "fill-opacity", 0.1); } catch {}
+      }
+    }, 160);
+
+    return () => clearInterval(pulseInterval);
+  }, [satelliteFootprint]);
 
   return (
     <div className="absolute inset-0">

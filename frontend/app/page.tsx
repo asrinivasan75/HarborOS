@@ -6,6 +6,7 @@ import AlertFeed from "@/app/components/AlertFeed";
 import MapView from "@/app/components/MapView";
 import VesselDetailPanel from "@/app/components/VesselDetail";
 import DemoMode from "@/app/components/DemoMode";
+import type { SatelliteFootprint } from "@/app/components/MapView";
 import { api } from "@/app/lib/api";
 import type { Vessel, VesselDetail, Alert, Geofence, IngestionStatus, Region } from "@/app/lib/api";
 
@@ -25,6 +26,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [ingestionStatus, setIngestionStatus] = useState<IngestionStatus | null>(null);
   const [mapTarget, setMapTarget] = useState<{ center: [number, number]; zoom: number } | null>(null);
+  const [satelliteFootprint, setSatelliteFootprint] = useState<SatelliteFootprint | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load initial data
@@ -221,6 +223,7 @@ export default function Dashboard() {
             selectedVesselId={selectedVessel?.id ?? null}
             onSelectVessel={handleSelectVessel}
             flyTo={mapTarget}
+            satelliteFootprint={satelliteFootprint}
           />
           <DemoMode
             onFlyTo={(center, zoom) => setMapTarget({ center, zoom })}
@@ -233,6 +236,7 @@ export default function Dashboard() {
           <VesselDetailPanel
             vessel={selectedVessel}
             alertId={selectedAlertId}
+            onSatelliteFootprint={setSatelliteFootprint}
             onClose={handleCloseDetail}
           />
         )}
