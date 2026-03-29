@@ -1,7 +1,7 @@
 """Alert generation and management service."""
 
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import logging
 import uuid
@@ -11,11 +11,13 @@ from sqlalchemy.orm import Session
 from app.models.domain import (
     VesselORM, PositionReportORM, GeofenceORM,
     AlertORM, AnomalySignalORM, AlertStatus,
-    AlertSchema, AnomalySignalSchema, AnomalyType
+    AlertSchema, AnomalySignalSchema, AnomalyType,
+    RiskHistoryORM,
 )
 from app.services.anomaly_detection import run_anomaly_detection, compute_regional_stats
 from app.services.risk_scoring import compute_risk_assessment
 from app.services.pattern_learning import get_learned_baseline, refresh_baseline
+from app.data_sources.nws_adapter import get_weather
 
 logger = logging.getLogger("harboros.alerts")
 
@@ -64,6 +66,14 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
             )
     nearby_list = list(latest_positions.values())
 
+    # Fetch weather conditions (batched by grid cell via adapter cache)
+    weather_by_vessel: dict[str, object] = {}
+    for v_id, (_, lat, lon, *_rest) in latest_positions.items():
+        try:
+            weather_by_vessel[v_id] = get_weather(lat, lon)
+        except Exception:
+            weather_by_vessel[v_id] = None
+
     for vessel in vessels:
         positions = (
             db.query(PositionReportORM)
@@ -93,9 +103,17 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
             regional_stats=regional_stats,
             nearby_vessels=nearby_list,
             learned_baseline=learned,
+            weather=weather_by_vessel.get(vessel.id),
         )
 
         assessment = compute_risk_assessment(vessel, signals)
+
+        # Record risk score snapshot for sparkline trend visualization
+        db.add(RiskHistoryORM(
+            vessel_id=vessel.id,
+            risk_score=assessment.risk_score,
+            recommended_action=assessment.recommended_action,
+        ))
 
         # Check for existing active alert FIRST so we can clear it if risk drops
         existing = (
@@ -151,6 +169,10 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
             db.add(signal_orm)
 
         alerts_created.append(alert)
+
+    # Prune risk history older than 24 hours to prevent unbounded growth
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    db.query(RiskHistoryORM).filter(RiskHistoryORM.timestamp < cutoff).delete()
 
     db.commit()
     return alerts_created

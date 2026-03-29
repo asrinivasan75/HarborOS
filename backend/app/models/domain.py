@@ -160,6 +160,17 @@ class AnomalySignalORM(Base):
     detected_at = Column(DateTime, default=datetime.utcnow)
 
 
+class RiskHistoryORM(Base):
+    """Snapshots of risk scores over time for trend visualization."""
+    __tablename__ = "risk_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    vessel_id = Column(String, ForeignKey("vessels.id"), index=True)
+    risk_score = Column(Float)
+    recommended_action = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class VerificationRequestORM(Base):
     __tablename__ = "verification_requests"
 
@@ -221,12 +232,31 @@ class VesselSchema(BaseModel):
         from_attributes = True
 
 
+class WeatherSchema(BaseModel):
+    wind_speed_kt: float = 0.0
+    wind_direction: str = ""
+    visibility_nm: float = 10.0
+    temperature_f: Optional[float] = None
+    description: str = ""
+
+
 class VesselDetailSchema(VesselSchema):
     positions: list[PositionReportSchema] = []
     anomaly_signals: list[AnomalySignalSchema] = []
     explanation: Optional[str] = None
     inspection_deficiencies: int = 0
     last_inspection_date: Optional[str] = None
+    weather: Optional[WeatherSchema] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RiskHistorySchema(BaseModel):
+    vessel_id: str
+    risk_score: float
+    recommended_action: str
+    timestamp: datetime
 
     class Config:
         from_attributes = True
