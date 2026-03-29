@@ -13,6 +13,7 @@ interface VesselDetailProps {
   onClose: () => void;
   onSatelliteFootprint?: (footprint: SatelliteFootprint | null) => void;
   onAlertAction?: (alertId: string, newStatus: string) => void;
+  closing?: boolean;
 }
 
 function parseSatelliteMediaRef(resultMediaRef: string | null): {
@@ -217,7 +218,7 @@ function formatReportHTML(report: Record<string, unknown>): string {
   return html;
 }
 
-export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint, onAlertAction }: VesselDetailProps) {
+export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint, onAlertAction, closing }: VesselDetailProps) {
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -319,7 +320,10 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
   const action = level === "normal" ? "normal" : (vessel.recommended_action ?? "ignore");
 
   return (
-    <div className="w-[400px] bg-[#0d1320] border-l border-[#1a2235] flex flex-col shrink-0 overflow-y-auto">
+    <div
+      className="w-[400px] bg-[#0d1320] border-l border-[#1a2235] flex flex-col shrink-0 overflow-y-auto shadow-2xl shadow-black/50"
+      style={{ animation: closing ? "slide-out-right 0.2s ease-in forwards" : "slide-in-right 0.25s ease-out" }}
+    >
       {/* Header */}
       <div className="p-5 border-b border-[#1a2235]">
         <div className="flex items-start justify-between">
@@ -352,6 +356,21 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
           </button>
         </div>
       </div>
+
+      {/* Inactive / Resolved Status Banner */}
+      {(vessel.is_inactive || vessel.is_resolved) && (
+        <div className="bg-slate-500/10 border-b border-[#1a2235] p-3 px-5 flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-slate-400" />
+          <div className="flex-1 min-w-0 flex items-baseline gap-2">
+            <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+              {vessel.is_resolved ? "RESOLVED" : "INACTIVE"}
+            </span>
+            <span className="text-[11px] text-slate-400 truncate">
+              {vessel.status_reason || "No active threat profile"}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Risk Score */}
       <div className="p-5 border-b border-[#1a2235]">
@@ -507,7 +526,7 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
               <button
                 onClick={handleVerify}
                 disabled={verifyLoading || !alertId}
-                className="w-full py-2.5 px-4 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 hover:border-blue-500/40 disabled:bg-[#111827] disabled:border-[#1a2235] disabled:text-slate-600 text-blue-400 text-sm font-medium rounded-lg transition-all"
+                className="w-full py-2 px-3 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 hover:border-blue-500/40 disabled:bg-[#111827] disabled:border-[#1a2235] disabled:text-slate-600 text-blue-400 text-[11px] font-medium rounded-lg transition-all"
               >
                 {verifyLoading ? "Requesting..." : `Request ${verifyAsset === "satellite" ? "Satellite Pass" : "Verification"}`}
               </button>

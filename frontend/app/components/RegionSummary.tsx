@@ -96,7 +96,7 @@ export default function RegionSummary({ regions, activeRegion, onSelectRegion }:
   if (regionKeys.length === 0) return null;
 
   return (
-    <div className="flex-shrink-0 px-3 py-2 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700">
+    <div className="flex-shrink-0 px-3 py-2 overflow-x-auto scroll-thin">
       <div className="flex gap-2">
         {/* Global view button */}
         <button

@@ -105,7 +105,7 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
         )
 
         # Skip low-confidence assessments, but clear active alerts if they exist
-        if assessment.risk_score < 20:
+        if assessment.risk_score < 40:
             if existing:
                 existing.status = "resolved"
                 existing.explanation = "Behavior returned to normal; risk score dropped below threshold."

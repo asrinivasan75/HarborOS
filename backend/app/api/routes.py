@@ -8,12 +8,34 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from global_land_mask import globe
+import numpy as np
+
+
+def _is_deep_inland(lat: float, lon: float) -> bool:
+    """Check if position is clearly inland, not just near a port/dock.
+
+    global_land_mask has ~1km resolution so vessels at berth often register
+    as 'on land'. Check a 3km neighborhood — if any nearby point is water,
+    the vessel is likely at a coastal facility, not landlocked.
+    """
+    if not globe.is_land(lat, lon):
+        return False
+    # Check points at ~0.05° (~5.5km) radius — covers large port complexes
+    for dlat in (-0.05, -0.025, 0, 0.025, 0.05):
+        for dlon in (-0.05, -0.025, 0, 0.025, 0.05):
+            if dlat == 0 and dlon == 0:
+                continue
+            if not globe.is_land(lat + dlat, lon + dlon):
+                return False  # Near water — likely a port/dock
+    return True  # All neighbors are land — truly inland
 
 from app.database import get_db
 from app.models.domain import (
     VesselORM, PositionReportORM, GeofenceORM, AlertORM, VerificationRequestORM, AlertAuditORM,
     VesselSchema, VesselDetailSchema, GeofenceSchema, AlertSchema, AlertAuditSchema,
     AlertActionRequest, DetectionMetricsSchema,
+    RiskDistributionSchema, RiskTierSchema, RiskHistogramBinSchema,
     VerificationRequestSchema, VerificationRequestCreate,
     RiskAssessmentSchema, AnomalySignalSchema, PositionReportSchema,
 )
@@ -135,6 +157,17 @@ def list_vessels(
 
     items = []
     for v, pos, alert in rows:
+        is_inactive = False
+        status_reason = None
+        
+        if pos:
+            if _is_deep_inland(pos.latitude, pos.longitude):
+                is_inactive = True
+                status_reason = "Inactive (Position over land)"
+            elif pos.speed_over_ground is not None and pos.speed_over_ground <= 0.1:
+                is_inactive = True
+                status_reason = f"Inactive (Speed {pos.speed_over_ground} kts)"
+
         items.append(VesselSchema(
             id=v.id,
             mmsi=v.mmsi,
@@ -158,6 +191,9 @@ def list_vessels(
             ) if pos else None,
             risk_score=alert.risk_score if alert else 0,
             recommended_action=alert.recommended_action if alert else "ignore",
+            is_inactive=is_inactive,
+            is_resolved=False, # Optimized out of bulk list
+            status_reason=status_reason,
         ))
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
@@ -195,6 +231,28 @@ def get_vessel_detail(vessel_id: str, db: Session = Depends(get_db)):
         if alert.anomaly_signals_json:
             signals = [AnomalySignalSchema(**s) for s in json.loads(alert.anomaly_signals_json)]
 
+    is_inactive = False
+    is_resolved = False
+    status_reason = None
+    
+    # Check if latest alert is actually resolved
+    latest_alert = db.query(AlertORM).filter(AlertORM.vessel_id == vessel_id).order_by(AlertORM.created_at.desc()).first()
+    if latest_alert and latest_alert.status == "resolved":
+        is_resolved = True
+        status_reason = "Manually Resolved"
+    
+    # Check physical state
+    if positions:
+        latest = positions[-1]
+        if _is_deep_inland(latest.latitude, latest.longitude):
+            is_inactive = True
+            if not is_resolved:
+                status_reason = "Inactive (Position over land)"
+        elif latest.speed_over_ground is not None and latest.speed_over_ground <= 0.1:
+            is_inactive = True
+            if not is_resolved:
+                status_reason = f"Inactive (Speed {latest.speed_over_ground} kts)"
+
     return VesselDetailSchema(
         id=vessel.id,
         mmsi=vessel.mmsi,
@@ -229,6 +287,9 @@ def get_vessel_detail(vessel_id: str, db: Session = Depends(get_db)):
         ) for p in positions],
         anomaly_signals=signals,
         explanation=explanation,
+        is_inactive=is_inactive,
+        is_resolved=is_resolved,
+        status_reason=status_reason,
     )
 
 
@@ -510,6 +571,83 @@ def get_detection_metrics(
         pending_feedback=total - feedback_total - dismissed,
         precision=round(confirmed / feedback_total, 3) if feedback_total > 0 else None,
     )
+
+@router.get("/analytics/distribution", response_model=RiskDistributionSchema)
+def get_risk_distribution(db: Session = Depends(get_db)):
+    """Get histogram and action tier breakdown for all alerts."""
+    # Get all alerts
+    alerts = db.query(AlertORM).all()
+    
+    active_scores = [a.risk_score for a in alerts if a.status == "active"]
+    resolved_scores = [a.risk_score for a in alerts if a.status == "resolved"]
+
+    # 1. Histogram (5-point bins)
+    bins = {}
+    for i in range(0, 100, 5):
+        bins[i] = {"active": 0, "resolved": 0}
+        
+    for s in active_scores:
+        b = int(s // 5) * 5
+        if b in bins:
+            bins[b]["active"] += 1
+            
+    for s in resolved_scores:
+        b = int(s // 5) * 5
+        if b in bins:
+            bins[b]["resolved"] += 1
+            
+    histogram = [
+        RiskHistogramBinSchema(
+            bin_start=b,
+            bin_end=b+4,
+            count_active=bins[b]["active"],
+            count_resolved=bins[b]["resolved"]
+        ) for b in sorted(bins.keys())
+    ]
+    
+    # 2. Tiers (Active only)
+    tiers_data = {
+        "escalate": {"count": 0, "signals": []},
+        "verify":   {"count": 0, "signals": []},
+        "monitor":  {"count": 0, "signals": []},
+        "ignore":   {"count": 0, "signals": []},
+    }
+    
+    for a in alerts:
+        if a.status != "active":
+            continue
+            
+        action = a.recommended_action
+        if action not in tiers_data:
+            action = "ignore"
+            
+        tiers_data[action]["count"] += 1
+        if a.anomaly_signals_json:
+            try:
+                sigs = json.loads(a.anomaly_signals_json)
+                tiers_data[action]["signals"].extend([s.get("anomaly_type") for s in sigs if s.get("anomaly_type")])
+            except Exception:
+                pass
+                
+    tiers = []
+    for action in ["escalate", "verify", "monitor", "ignore"]:
+        data = tiers_data[action]
+        cnt = data["count"]
+        sigs = data["signals"]
+        avg = len(sigs) / cnt if cnt > 0 else 0.0
+        
+        # Top signals
+        from collections import Counter
+        top = dict(Counter(sigs).most_common(3))
+        
+        tiers.append(RiskTierSchema(
+            action=action,
+            count=cnt,
+            avg_signals=round(avg, 1),
+            top_signals=top
+        ))
+        
+    return RiskDistributionSchema(histogram=histogram, tiers=tiers)
 
 
 @router.post("/alerts/generate")

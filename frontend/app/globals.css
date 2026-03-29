@@ -86,3 +86,91 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slide-out-right {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes fade-in-up {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fade-out-up {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-12px); opacity: 0; }
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Loading skeleton shimmer */
+.skeleton {
+  background: linear-gradient(90deg, #111827 25%, #1a2235 50%, #111827 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* Cross-browser thin scrollbar */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #1e293b transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  height: 4px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 10px;
+}
+
+/* Timeline slider cross-browser */
+input[type="range"].timeline-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  width: 100%;
+  height: 4px;
+}
+input[type="range"].timeline-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #1a2235;
+  border-radius: 2px;
+}
+input[type="range"].timeline-slider::-moz-range-track {
+  height: 4px;
+  background: #1a2235;
+  border-radius: 2px;
+  border: none;
+}
+input[type="range"].timeline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #60a5fa;
+  border: 2px solid #0d1320;
+  margin-top: -4px;
+  box-shadow: 0 0 6px rgba(96, 165, 250, 0.3);
+}
+input[type="range"].timeline-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #60a5fa;
+  border: 2px solid #0d1320;
+  box-shadow: 0 0 6px rgba(96, 165, 250, 0.3);
+}

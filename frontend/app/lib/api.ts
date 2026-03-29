@@ -35,6 +35,9 @@ export interface Vessel {
   latest_position: Position | null;
   risk_score: number | null;
   recommended_action: string | null;
+  is_inactive?: boolean;
+  is_resolved?: boolean;
+  status_reason?: string | null;
 }
 
 export interface VesselDetail extends Vessel {
@@ -136,6 +139,25 @@ export interface AlertAudit {
   timestamp: string;
 }
 
+export interface RiskHistogramBin {
+  bin_start: number;
+  bin_end: number;
+  count_active: number;
+  count_resolved: number;
+}
+
+export interface RiskTier {
+  action: string;
+  count: number;
+  avg_signals: number;
+  top_signals: Record<string, number>;
+}
+
+export interface RiskDistribution {
+  histogram: RiskHistogramBin[];
+  tiers: RiskTier[];
+}
+
 export interface DetectionMetrics {
   total_alerts: number;
   active_alerts: number;
@@ -195,6 +217,7 @@ export const api = {
     const qs = params.toString();
     return fetchAPI<DetectionMetrics>(`/detection/metrics${qs ? `?${qs}` : ""}`);
   },
+  getRiskDistribution: () => fetchAPI<RiskDistribution>("/analytics/distribution"),
   updateAlert: (id: string, status: string) =>
     fetchAPI(`/alerts/${id}?status=${status}`, { method: "PATCH" }),
   getGeofences: () => fetchAPI<Geofence[]>("/geofences"),

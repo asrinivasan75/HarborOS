@@ -69,7 +69,7 @@ def detect_geofence_breach(
     zones is expected, cargo ships or fishing vessels less so.
     """
     signals = []
-    if not positions:
+    if not positions or len(positions) < 3:
         return signals
 
     profile = get_profile(vessel.vessel_type)
@@ -85,7 +85,7 @@ def detect_geofence_breach(
 
         checked = positions[-10:]
         inside_count = sum(1 for pos in checked if point_in_polygon(pos.latitude, pos.longitude, coords))
-        if inside_count > 0:
+        if inside_count >= 2:
             base_severity = 0.9 if gf.severity == "high" else 0.6
             # Scale by breach duration: more positions inside = more sustained presence
             ratio = inside_count / len(checked)
@@ -563,7 +563,7 @@ def detect_kinematic_implausibility(
     Based on the paper's 'inconsistency' anomaly type: cross-check reported
     position changes against vessel manoeuvrability constraints.
     """
-    if len(positions) < 2:
+    if len(positions) < 3:
         return []
 
     impossible_jumps = 0

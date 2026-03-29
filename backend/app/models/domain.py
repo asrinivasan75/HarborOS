@@ -216,6 +216,9 @@ class VesselSchema(BaseModel):
     latest_position: Optional[PositionReportSchema] = None
     risk_score: Optional[float] = None
     recommended_action: Optional[str] = None
+    is_inactive: bool = False
+    is_resolved: bool = False
+    status_reason: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -286,6 +289,25 @@ class DetectionMetricsSchema(BaseModel):
     false_positives: int
     pending_feedback: int
     precision: Optional[float] = None  # confirmed / (confirmed + false_positive)
+
+
+class RiskHistogramBinSchema(BaseModel):
+    bin_start: int
+    bin_end: int
+    count_active: int
+    count_resolved: int
+
+
+class RiskTierSchema(BaseModel):
+    action: str  # escalate, verify, monitor, ignore
+    count: int
+    avg_signals: float
+    top_signals: dict[str, int]
+
+
+class RiskDistributionSchema(BaseModel):
+    histogram: list[RiskHistogramBinSchema]
+    tiers: list[RiskTierSchema]
 
 
 class VerificationRequestSchema(BaseModel):

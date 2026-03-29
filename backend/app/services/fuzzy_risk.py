@@ -68,14 +68,15 @@ INSPECTION_SETS = {
 }
 
 # Output: risk_level (0-100), aligned with ISPS MARSEC levels
-# Tuned so that single low-severity signals stay in MONITOR range,
-# and VERIFY/ESCALATE require multiple strong converging signals.
+# Sets are wide and well-separated so centroid defuzzification produces
+# a continuous score spread. Narrow/overlapping sets cause attractor
+# plateaus where many different inputs collapse to the same output.
 RISK_OUTPUT_SETS = {
-    "safe":     lambda x: trapmf(x, (0, 0, 5, 15)),
-    "low":      lambda x: trimf(x, (10, 22, 38)),
-    "medium":   lambda x: trimf(x, (32, 48, 65)),
-    "high":     lambda x: trimf(x, (58, 75, 90)),
-    "critical": lambda x: trapmf(x, (82, 92, 100, 100)),
+    "safe":     lambda x: trapmf(x, (0, 0, 5, 12)),
+    "low":      lambda x: trimf(x, (8, 20, 42)),
+    "medium":   lambda x: trimf(x, (35, 52, 70)),
+    "high":     lambda x: trimf(x, (62, 78, 92)),
+    "critical": lambda x: trapmf(x, (85, 95, 100, 100)),
 }
 
 
@@ -87,8 +88,8 @@ RULES: list[tuple[str | None, str | None, str | None, str]] = [
     # Core anomaly-driven rules
     ("negligible", "complete", "clean",    "safe"),
     ("negligible", "complete", None,       "safe"),
-    ("negligible", "partial",  None,       "low"),
-    ("negligible", "poor",     None,       "low"),
+    ("negligible", "partial",  None,       "safe"),
+    ("negligible", "poor",     None,       "safe"),
     ("low",        None,       None,       "low"),
     ("low",        "poor",     None,       "medium"),
     ("medium",     None,       None,       "medium"),
@@ -123,10 +124,19 @@ def _evaluate_rule(
     if not strengths:
         return 0.0
     return min(strengths)
+# Peak positions for each output set (used in weighted-mean-of-maxima)
+_SET_PEAKS = {"safe": 2.5, "low": 20.0, "medium": 52.0, "high": 78.0, "critical": 97.5}
 
 
 def defuzzify_centroid(activations: dict[str, float], resolution: int = 200) -> float:
-    """Centroid defuzzification of aggregated fuzzy output → crisp 0-100."""
+    """Blended centroid + weighted-mean-of-maxima defuzzification → crisp 0-100.
+
+    Pure centroid creates attractor plateaus: when only one set fires, the
+    centroid always converges to ~the same value regardless of activation
+    strength. Blending with WMoM (which uses set peaks weighted by strength)
+    breaks these plateaus and produces a continuous score spread.
+    """
+    # 1. Standard Mamdani centroid
     numerator = 0.0
     denominator = 0.0
     for i in range(resolution + 1):
@@ -135,12 +145,24 @@ def defuzzify_centroid(activations: dict[str, float], resolution: int = 200) -> 
         for set_name, strength in activations.items():
             if strength > 0:
                 set_mu = RISK_OUTPUT_SETS[set_name](x)
-                mu = max(mu, min(set_mu, strength))  # Mamdani: clip then aggregate via max
+                mu = max(mu, min(set_mu, strength))
         numerator += x * mu
         denominator += mu
     if denominator < 1e-10:
         return 0.0
-    return numerator / denominator
+    centroid = numerator / denominator
+
+    # 2. Weighted mean of maxima (peak positions × activation strengths)
+    wmom_num = 0.0
+    wmom_den = 0.0
+    for set_name, strength in activations.items():
+        if strength > 0:
+            wmom_num += _SET_PEAKS[set_name] * strength
+            wmom_den += strength
+    wmom = wmom_num / wmom_den if wmom_den > 1e-10 else 0.0
+
+    # 3. Blend: 60% centroid (mathematically stable) + 40% WMoM (discriminating)
+    return 0.6 * centroid + 0.4 * wmom
 
 
 # ── Main Inference Entry Point ───────────────────────
@@ -173,8 +195,16 @@ def fuzzy_risk_score(
         if strength > activations[result_set]:
             activations[result_set] = strength
 
-    # Defuzzify the aggregated activations using centroid method (0-100)
-    score = defuzzify_centroid(activations)
+    # Defuzzify the aggregated activations using blended centroid + WMoM
+    base_score = defuzzify_centroid(activations)
+
+    # Input-proportional spread: centroid defuzzification creates plateaus where
+    # different input strengths map to the same score. Perturb the score based
+    # on the raw anomaly severity to spread vessels within each MARSEC band.
+    # The perturbation scales the score ±15% proportionally to severity.
+    severity_factor = anomaly_severity  # 0 to 1
+    spread = (severity_factor - 0.15) * 0.3 * base_score  # ±15% swing centered at 0.15
+    score = max(0.0, min(100.0, base_score + spread))
     score = round(score, 1)
 
     action = marsec_action(score)
@@ -191,10 +221,10 @@ def fuzzy_risk_score(
 
 def marsec_action(score: float) -> str:
     """Map risk score to ISPS MARSEC-aligned action."""
-    if score >= 75:
+    if score >= 80:
         return "escalate"   # MARSEC 3
-    elif score >= 50:
+    elif score >= 60:
         return "verify"     # MARSEC 2
-    elif score >= 20:
+    elif score >= 40:
         return "monitor"    # MARSEC 1 (elevated)
     return "ignore"

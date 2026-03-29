@@ -1,8 +1,8 @@
 // Centralized risk thresholds used across all components
 export const RISK_THRESHOLDS = {
-  escalate: 75,
-  verify: 50,
-  monitor: 20,
+  escalate: 80,
+  verify: 60,
+  monitor: 40,
 } as const;
 
 export const RISK_COLORS = {
