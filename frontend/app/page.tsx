@@ -390,7 +390,21 @@ export default function Dashboard() {
             }}
             onSelectVessel={handleSelectVessel}
             onSelectRegion={handleRegionChange}
+            onDeselectVessel={() => { if (selectedVessel) handleCloseDetail(); else { setSelectedVessel(null); setSelectedAlertId(null); } }}
+            onShowAnalytics={(show) => {
+              if (show && !showAnalytics) handleToggleAnalytics();
+              else if (!show && showAnalytics) handleToggleAnalytics();
+            }}
             darkHorizonId="v-dark-horizon"
+            jadeStarId="v-jade-star"
+            darkOpticalId="v-dark-optical-1"
+            normalVesselIds={[
+              "v-ever-forward",
+              "v-pacific-guardian",
+              "v-port-valor",
+              "v-maria-del-mar",
+              "v-catalina-express",
+            ]}
           />
           {(showAnalytics || analyticsClosing) && (
             <RiskDistributionPanel

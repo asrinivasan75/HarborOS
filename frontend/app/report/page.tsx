@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/app/lib/api";
 import { riskLevel } from "@/app/lib/risk";
@@ -37,6 +37,14 @@ function sevColor(sev: number) {
 }
 
 export default function ReportPage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-gray-400">Loading report...</div>}>
+      <ReportContent />
+    </Suspense>
+  );
+}
+
+function ReportContent() {
   const searchParams = useSearchParams();
   const vesselId = searchParams.get("vesselId");
   const [report, setReport] = useState<Report | null>(null);
@@ -113,11 +121,11 @@ export default function ReportPage() {
                 <Row label="Type" value={String(vessel.vessel_type ?? "\u2014")} />
                 <Row label="Flag" value={String(vessel.flag_state ?? "\u2014")} />
               </div>
-              {(vessel.length || vessel.beam || vessel.draft) && (
+              {!!(vessel.length || vessel.beam || vessel.draft) && (
                 <div className="flex gap-4 text-[11px] text-gray-500 pt-2 border-t border-gray-100">
-                  {vessel.length && <span>L: {parseFloat(Number(vessel.length).toFixed(1))}m</span>}
-                  {vessel.beam && <span>B: {parseFloat(Number(vessel.beam).toFixed(1))}m</span>}
-                  {vessel.draft && <span>D: {parseFloat(Number(vessel.draft).toFixed(1))}m</span>}
+                  {vessel.length ? <span>L: {parseFloat(Number(vessel.length).toFixed(1))}m</span> : null}
+                  {vessel.beam ? <span>B: {parseFloat(Number(vessel.beam).toFixed(1))}m</span> : null}
+                  {vessel.draft ? <span>D: {parseFloat(Number(vessel.draft).toFixed(1))}m</span> : null}
                 </div>
               )}
             </div>
@@ -133,7 +141,7 @@ export default function ReportPage() {
                 {action.text}
               </div>
             </div>
-            {risk.explanation && (
+            {!!risk.explanation && (
               <p className="text-[11px] text-gray-500 leading-relaxed">{String(risk.explanation)}</p>
             )}
           </div>
@@ -178,7 +186,7 @@ export default function ReportPage() {
                         style={{ width: `${sevPct}%` }}
                       />
                     </div>
-                    {s.description && (
+                    {!!s.description && (
                       <p className="text-[10px] text-gray-400">{String(s.description)}</p>
                     )}
                   </div>

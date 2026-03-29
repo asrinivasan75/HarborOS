@@ -47,6 +47,92 @@ VESSELS = [
         "inspection_deficiencies": 4,
         "last_inspection_date": "2025-06-15",
     },
+
+    # AIS SPOOFING — kinematic implausibility demo
+    {
+        "id": "v-jade-star",
+        "mmsi": "672301456",
+        "name": "JADE STAR",
+        "vessel_type": "cargo",
+        "flag_state": "Comoros",
+        "length": 112.0, "beam": 16.5, "draft": 6.1,
+        "imo": "9876543",
+        "callsign": "D6JS",
+        "destination": "LONG BEACH",
+        "inspection_deficiencies": 2,
+        "last_inspection_date": "2025-09-20",
+    },
+
+    # DARK / UNIDENTIFIED — optical detection only (no AIS)
+    {
+        "id": "v-dark-optical-1",
+        "mmsi": "900000001",
+        "name": "UNIDENTIFIED VESSEL (Optical)",
+        "vessel_type": "unidentified",
+        "flag_state": "",
+        "length": None, "beam": None, "draft": None,
+        "imo": None,
+        "callsign": None,
+        "destination": "UNKNOWN",
+    },
+
+    # ── Normal traffic ──────────────────────────────────
+
+    {
+        "id": "v-ever-forward",
+        "mmsi": "563012345",
+        "name": "EVER FORWARD",
+        "vessel_type": "cargo",
+        "flag_state": "Singapore",
+        "length": 334.0, "beam": 48.2, "draft": 14.5,
+        "imo": "9811000",
+        "callsign": "9V2345",
+        "destination": "LOS ANGELES",
+    },
+    {
+        "id": "v-pacific-guardian",
+        "mmsi": "636091234",
+        "name": "PACIFIC GUARDIAN",
+        "vessel_type": "tanker",
+        "flag_state": "Liberia",
+        "length": 183.0, "beam": 32.2, "draft": 11.0,
+        "imo": "9765432",
+        "callsign": "A8LB7",
+        "destination": "LONG BEACH",
+    },
+    {
+        "id": "v-port-valor",
+        "mmsi": "367890123",
+        "name": "PORT VALOR",
+        "vessel_type": "tug",
+        "flag_state": "United States",
+        "length": 30.0, "beam": 10.0, "draft": 4.0,
+        "imo": None,
+        "callsign": "WDJ1234",
+        "destination": "LA HARBOR",
+    },
+    {
+        "id": "v-maria-del-mar",
+        "mmsi": "345678901",
+        "name": "MARIA DEL MAR",
+        "vessel_type": "fishing",
+        "flag_state": "Mexico",
+        "length": 22.0, "beam": 6.5, "draft": 2.8,
+        "imo": None,
+        "callsign": "XA9876",
+        "destination": "ENSENADA",
+    },
+    {
+        "id": "v-catalina-express",
+        "mmsi": "367654321",
+        "name": "CATALINA EXPRESS",
+        "vessel_type": "passenger",
+        "flag_state": "United States",
+        "length": 46.0, "beam": 10.0, "draft": 2.2,
+        "imo": None,
+        "callsign": "WBZ5678",
+        "destination": "AVALON",
+    },
 ]
 
 
@@ -564,6 +650,152 @@ def generate_moderate_track_runner() -> list[dict]:
     return positions
 
 
+def generate_spoofing_track() -> list[dict]:
+    """JADE STAR: impossible position jumps indicating AIS spoofing."""
+    positions = []
+    t = BASE_TIME + timedelta(minutes=15)
+
+    # Phase 1: Normal approach from SSE (10 points at ~8kt)
+    lat, lon = 33.680, -118.250
+    for i in range(10):
+        positions.append({
+            "timestamp": t,
+            "latitude": lat + random.uniform(-0.0003, 0.0003),
+            "longitude": lon + random.uniform(-0.0003, 0.0003),
+            "speed_over_ground": 8.0 + random.uniform(-0.5, 0.5),
+            "course_over_ground": 350 + random.uniform(-5, 5),
+            "heading": 350 + random.uniform(-3, 3),
+        })
+        lat += 0.0025
+        lon += random.uniform(-0.0003, 0.0003)
+        t += timedelta(minutes=2.5)
+
+    # Phase 2: IMPOSSIBLE JUMP — ~50nm north in 2 minutes
+    t += timedelta(minutes=2)
+    lat_jumped = lat + 0.83  # ~50nm
+    positions.append({
+        "timestamp": t,
+        "latitude": lat_jumped,
+        "longitude": lon + random.uniform(-0.001, 0.001),
+        "speed_over_ground": 8.5,  # Reports normal speed — lying
+        "course_over_ground": 355,
+        "heading": 355,
+    })
+
+    # Phase 3: Normal segment from jumped position (5 points)
+    lat = lat_jumped
+    t += timedelta(minutes=2.5)
+    for i in range(5):
+        positions.append({
+            "timestamp": t,
+            "latitude": lat + random.uniform(-0.0003, 0.0003),
+            "longitude": lon + random.uniform(-0.0003, 0.0003),
+            "speed_over_ground": 7.5 + random.uniform(-0.5, 0.5),
+            "course_over_ground": 340 + random.uniform(-5, 5),
+            "heading": 340 + random.uniform(-3, 3),
+        })
+        lat += 0.002
+        t += timedelta(minutes=2.5)
+
+    # Phase 4: SECOND IMPOSSIBLE JUMP — ~30nm back south in 3 minutes
+    t += timedelta(minutes=3)
+    lat_back = lat - 0.50  # ~30nm
+    positions.append({
+        "timestamp": t,
+        "latitude": lat_back,
+        "longitude": lon + 0.01,
+        "speed_over_ground": 9.0,
+        "course_over_ground": 175,
+        "heading": 175,
+    })
+
+    # Phase 5: Brief normal segment (5 points)
+    lat, lon = lat_back, lon + 0.01
+    t += timedelta(minutes=2.5)
+    for i in range(5):
+        positions.append({
+            "timestamp": t,
+            "latitude": lat + random.uniform(-0.0003, 0.0003),
+            "longitude": lon + random.uniform(-0.0003, 0.0003),
+            "speed_over_ground": 8.0 + random.uniform(-0.5, 0.5),
+            "course_over_ground": 10 + random.uniform(-5, 5),
+            "heading": 10 + random.uniform(-3, 3),
+        })
+        lat += 0.002
+        t += timedelta(minutes=2.5)
+
+    return positions
+
+
+def generate_dark_optical_track() -> list[dict]:
+    """UNIDENTIFIED VESSEL: CV-derived positions, slow ~4kt movement."""
+    positions = []
+    t = BASE_TIME + timedelta(minutes=45)
+    lat, lon = 33.700, -118.250
+    heading = 295  # WNW
+    speed_kt = 4.2
+
+    for i in range(6):
+        positions.append({
+            "timestamp": t,
+            "latitude": lat + random.uniform(-0.0002, 0.0002),
+            "longitude": lon + random.uniform(-0.0002, 0.0002),
+            "speed_over_ground": speed_kt + random.uniform(-0.3, 0.3),
+            "course_over_ground": heading + random.uniform(-8, 8),
+            "heading": heading + random.uniform(-5, 5),
+        })
+        nm_per_min = speed_kt / 60
+        dist = nm_per_min * 5  # 5-min intervals
+        lat += dist * math.cos(math.radians(heading)) / 60
+        lon += dist * math.sin(math.radians(heading)) / (60 * math.cos(math.radians(lat)))
+        t += timedelta(minutes=5)
+
+    return positions
+
+
+def generate_anchor_track(lat: float, lon: float, num_points: int = 40) -> list[dict]:
+    """Stationary vessel at anchor with slight drift."""
+    positions = []
+    t = BASE_TIME
+    for i in range(num_points):
+        positions.append({
+            "timestamp": t,
+            "latitude": lat + random.uniform(-0.0005, 0.0005),
+            "longitude": lon + random.uniform(-0.0005, 0.0005),
+            "speed_over_ground": random.uniform(0, 0.3),
+            "course_over_ground": random.uniform(0, 360),
+            "heading": random.uniform(0, 360),
+        })
+        t += timedelta(minutes=2.5)
+    return positions
+
+
+def generate_tug_track() -> list[dict]:
+    """PORT VALOR: short movements near docks."""
+    positions = []
+    t = BASE_TIME + timedelta(minutes=5)
+    lat, lon = 33.748, -118.275
+
+    for i in range(35):
+        angle = (i * 25 + random.uniform(-10, 10)) % 360
+        speed = random.uniform(2, 6) if i % 5 != 0 else random.uniform(0, 0.5)
+        positions.append({
+            "timestamp": t,
+            "latitude": lat + random.uniform(-0.001, 0.001),
+            "longitude": lon + random.uniform(-0.001, 0.001),
+            "speed_over_ground": speed,
+            "course_over_ground": angle,
+            "heading": angle + random.uniform(-10, 10),
+        })
+        lat += 0.0003 * math.cos(math.radians(angle))
+        lon += 0.0003 * math.sin(math.radians(angle)) / math.cos(math.radians(lat))
+        lat = max(33.744, min(33.752, lat))
+        lon = max(-118.280, min(-118.270, lon))
+        t += timedelta(minutes=2.5)
+
+    return positions
+
+
 def seed():
     """Main seed function."""
     # Reset database
@@ -588,8 +820,16 @@ def seed():
         # Create vessels and tracks
         track_generators = {
             "v-dark-horizon": generate_suspicious_track,
+            "v-jade-star": generate_spoofing_track,
+            "v-dark-optical-1": generate_dark_optical_track,
+            "v-port-valor": generate_tug_track,
+            "v-pacific-guardian": lambda: generate_anchor_track(33.712, -118.218),
         }
-        normal_configs = {}
+        normal_configs = {
+            "v-ever-forward": (33.690, -118.260, 5, 12),
+            "v-maria-del-mar": (33.680, -118.300, 315, 4),
+            "v-catalina-express": (33.740, -118.280, 210, 22),
+        }
 
         for vessel_data in VESSELS:
             vessel = VesselORM(
@@ -637,7 +877,104 @@ def seed():
         # Generate alerts from anomaly detection
         print("Running anomaly detection and generating alerts...")
         alerts = generate_alerts_for_all_vessels(db)
-        print(f"Created {len(alerts)} alerts")
+        print(f"Created {len(alerts)} alerts from auto-detection")
+
+        # ── Manual alerts for demo-specific vessels ────────────
+        # Dark optical vessel — needs a dark_ship_optical signal
+        # (not generated by standard anomaly pipeline)
+        for ea in db.query(AlertORM).filter(AlertORM.vessel_id == "v-dark-optical-1").all():
+            db.query(AnomalySignalORM).filter(AnomalySignalORM.alert_id == ea.id).delete()
+            db.delete(ea)
+
+        dark_optical_alert_id = str(uuid.uuid4())
+        dark_optical_signals = [{
+            "anomaly_type": "dark_ship_optical",
+            "severity": 0.65,
+            "description": (
+                "OPTICAL DARK SHIP DETECTION by SeaPod_Alpha. "
+                "Unregistered vessel detected at range 3.3 nm, bearing 295\u00b0. "
+                "No AIS transponder signal. Detection confidence: 50%. "
+                "This vessel does not appear in any AIS database."
+            ),
+            "details": {
+                "source": "edge_node",
+                "node_id": "SeaPod_Alpha",
+                "raw_distance_m": 6112.0,
+                "scaled_distance_nm": 3.3,
+                "velocity_ms": 4.2,
+                "heading_deg": 295,
+                "confidence": 0.50,
+                "stream_url": None,
+            },
+        }]
+        dark_optical_alert = AlertORM(
+            id=dark_optical_alert_id,
+            vessel_id="v-dark-optical-1",
+            risk_score=85.0,
+            recommended_action="escalate",
+            explanation=(
+                "Unidentified vessel detected by optical computer vision (SeaPod edge node). "
+                "No AIS transponder, no registered identity. "
+                "Detected at 3.3 nm range, bearing 295\u00b0, moving at ~4.2 kt."
+            ),
+            anomaly_signals_json=json.dumps(dark_optical_signals),
+        )
+        db.add(dark_optical_alert)
+        for sig in dark_optical_signals:
+            db.add(AnomalySignalORM(
+                alert_id=dark_optical_alert_id,
+                anomaly_type=sig["anomaly_type"],
+                severity=sig["severity"],
+                description=sig["description"],
+                details_json=json.dumps(sig["details"]),
+            ))
+        alerts.append(dark_optical_alert)
+
+        # JADE STAR — ensure a compelling spoofing alert exists
+        for ea in db.query(AlertORM).filter(AlertORM.vessel_id == "v-jade-star").all():
+            db.query(AnomalySignalORM).filter(AnomalySignalORM.alert_id == ea.id).delete()
+            db.delete(ea)
+
+        jade_star_alert_id = str(uuid.uuid4())
+        jade_star_signals = [{
+            "anomaly_type": "kinematic_implausibility",
+            "severity": 0.55,
+            "description": (
+                "2 impossible position jumps detected (max 50.0 nm in under 2 minutes). "
+                "Vessel appeared to teleport between locations — strong indicator of "
+                "AIS position spoofing or GPS manipulation."
+            ),
+            "details": {
+                "impossible_jumps": 2,
+                "max_jump_nm": 50.0,
+                "max_implied_speed_kt": 1500.0,
+                "spoofing_confidence": "high",
+            },
+        }]
+        jade_star_alert = AlertORM(
+            id=jade_star_alert_id,
+            vessel_id="v-jade-star",
+            risk_score=72.0,
+            recommended_action="verify",
+            explanation=(
+                "AIS position data shows kinematic implausibility — "
+                "2 position jumps exceeding physically possible vessel speed. "
+                "Probable AIS spoofing or GPS manipulation. Verify actual position."
+            ),
+            anomaly_signals_json=json.dumps(jade_star_signals),
+        )
+        db.add(jade_star_alert)
+        for sig in jade_star_signals:
+            db.add(AnomalySignalORM(
+                alert_id=jade_star_alert_id,
+                anomaly_type=sig["anomaly_type"],
+                severity=sig["severity"],
+                description=sig["description"],
+                details_json=json.dumps(sig["details"]),
+            ))
+        alerts.append(jade_star_alert)
+        db.commit()
+        print(f"  + 2 manual demo alerts (dark optical, spoofing)")
 
         # Seed risk history for sparkline visualization (simulate 3 hours of trend data)
         print("Seeding risk history for sparkline trends...")
