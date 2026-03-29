@@ -10,7 +10,6 @@ interface AlertFeedProps {
   selectedAlertId: string | null;
   onSelectAlert: (alert: Alert) => void;
   onLoadMore: () => void;
-  onCompare?: (alert: Alert) => void;
   statusFilter: string;
   onStatusFilterChange: (filter: string) => void;
 }
@@ -74,7 +73,7 @@ function sortAlerts(alerts: Alert[], key: SortKey, ascending: boolean): Alert[] 
   });
 }
 
-export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSelectAlert, onLoadMore, onCompare, statusFilter, onStatusFilterChange }: AlertFeedProps) {
+export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSelectAlert, onLoadMore, statusFilter, onStatusFilterChange }: AlertFeedProps) {
   const hasMore = alerts.length < alertsTotal;
   const [sortKey, setSortKey] = useState<SortKey>("risk");
   const [ascending, setAscending] = useState(false);
@@ -208,18 +207,6 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
                     </span>
                   )}
                   <span className="text-[9px] text-slate-600">{timeAgo(alert.created_at)}</span>
-                  <span className="flex-1" />
-                  {onCompare && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); onCompare(alert); }}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onCompare(alert); } }}
-                      className="text-[8px] font-semibold uppercase text-blue-400 hover:text-blue-300 cursor-pointer"
-                    >
-                      Compare
-                    </span>
-                  )}
                 </div>
                 <p className="text-[9px] text-slate-500 line-clamp-1 mt-1">
                   {alert.anomaly_signals.map((s) => signalLabel(s.anomaly_type)).join(" · ")}

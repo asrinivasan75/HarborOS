@@ -356,7 +356,7 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
         <div className="bg-slate-500/10 border-b border-[#1a2235] px-4 py-2 flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
           <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">
-            {vessel.is_resolved ? "RESOLVED" : "INACTIVE"}
+            {vessel.is_resolved ? "RESOLVED" : vessel.status_reason?.toLowerCase().includes("stationary") ? "STATIONARY" : "INACTIVE"}
           </span>
           <span className="text-[10px] text-slate-500 truncate">
             {vessel.status_reason || "No active threat profile"}
