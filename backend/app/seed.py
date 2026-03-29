@@ -37,7 +37,7 @@ VESSELS = [
     {
         "id": "v-dark-horizon",
         "mmsi": "538006789",
-        "name": "EventEdgeHQ.com",
+        "name": "MV DARK HORIZON",
         "vessel_type": "cargo",
         "flag_state": "Marshall Islands",
         "length": 89.0, "beam": 14.0, "draft": 5.2,
