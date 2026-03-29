@@ -170,13 +170,19 @@ class IngestionService:
 
         self._vessels_seen.add(mmsi)
 
+        # AIS protocol: raw SOG value 1023 (102.3 kt) means "not available".
+        # Heading 511 also means "not available". Filter these sentinel values.
+        sog = data.get("speed_over_ground")
+        if sog is not None and sog >= 102.2:
+            sog = None  # Discard AIS "not available" sentinel
+
         # Insert position report
         pos = PositionReportORM(
             vessel_id=vessel.id,
             timestamp=timestamp.replace(tzinfo=None) if timestamp.tzinfo else timestamp,
             latitude=data["latitude"],
             longitude=data["longitude"],
-            speed_over_ground=data.get("speed_over_ground"),
+            speed_over_ground=sog,
             course_over_ground=data.get("course_over_ground"),
             heading=data.get("heading") if data.get("heading") != 511 else None,
             nav_status=data.get("nav_status"),

@@ -41,7 +41,7 @@ export default function Dashboard() {
       try {
         const [v, a, g, r] = await Promise.all([
           api.getVessels(),
-          api.getAlerts(),
+          api.getAlerts("active"),
           api.getGeofences(),
           api.getRegions(),
         ]);
@@ -75,7 +75,7 @@ export default function Dashboard() {
         const regionParam = activeRegion || undefined;
         const [v, a, status] = await Promise.all([
           api.getVessels(regionParam),
-          api.getAlerts(undefined, regionParam, alertsLimitRef.current),
+          api.getAlerts("active", regionParam, alertsLimitRef.current),
           api.getIngestionStatus().catch(() => null),
         ]);
         setVessels(v.items);
@@ -110,7 +110,7 @@ export default function Dashboard() {
       const regionParam = regionKey || undefined;
       const [v, a] = await Promise.all([
         api.getVessels(regionParam),
-        api.getAlerts(undefined, regionParam),
+        api.getAlerts("active", regionParam),
       ]);
       setVessels(v.items);
       setAlerts(a.items);
@@ -142,6 +142,14 @@ export default function Dashboard() {
     try {
       const detail = await api.getVesselDetail(alert.vessel_id);
       setSelectedVessel(detail);
+      
+      // Ensure the vessel marker exists on the map even if it was excluded by the background limit
+      setVessels((prev) => {
+        if (!prev.some((v) => v.id === detail.id)) {
+          return [...prev, detail];
+        }
+        return prev;
+      });
       // Fly to vessel position when clicking an alert
       if (detail.latest_position) {
         setMapTarget({
@@ -159,7 +167,7 @@ export default function Dashboard() {
     try {
       const regionParam = activeRegion || undefined;
       const newLimit = alerts.length + 50;
-      const a = await api.getAlerts(undefined, regionParam, newLimit);
+      const a = await api.getAlerts("active", regionParam, newLimit);
       alertsLimitRef.current = newLimit;
       setAlerts(a.items);
       setAlertsTotal(a.total);

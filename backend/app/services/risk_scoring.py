@@ -79,8 +79,10 @@ def aggregate_anomaly_severity(signals: list[AnomalySignalSchema]) -> tuple[floa
         total *= DIVERSITY_BONUS_2
 
     # Normalize to 0-1: divisor calibrated so escalate requires multiple
-    # strong defense-relevant signals converging
-    composite = min(1.0, total / 2.5)
+    # strong defense-relevant signals converging.
+    # At 3.5, a single 0.3-severity signal with weight 0.75 → composite ~0.06 (negligible).
+    # Escalate requires 3+ strong converging signals to push past 0.7.
+    composite = min(1.0, total / 3.5)
     return composite, breakdown
 
 
@@ -139,26 +141,30 @@ def generate_explanation(
     action: str,
     fuzzy_debug: dict,
 ) -> str:
-    """Concise explanation — signal details are shown separately in UI cards."""
+    """Generate a specific, actionable explanation using actual signal descriptions."""
     if not signals:
         return "No significant anomalies detected."
 
     vtype = (vessel.vessel_type or "unknown").replace("_", " ")
+    vessel_label = vessel.name or f"MMSI {vessel.mmsi}"
+
+    # Use the actual detector descriptions — they contain the real details
     sorted_signals = sorted(signals, key=lambda s: s.severity, reverse=True)
-    top_labels = []
-    for s in sorted_signals[:3]:
-        label = _SIGNAL_LABELS.get(s.anomaly_type, s.anomaly_type.replace("_", " "))
-        top_labels.append(label)
 
-    summary = f"{len(signals)} anomaly signal{'s' if len(signals) != 1 else ''} detected on {vtype} vessel"
-    if vessel.name:
-        summary += f" {vessel.name}"
-    summary += f": {', '.join(top_labels)}"
-    if len(signals) > 3:
-        summary += f", and {len(signals) - 3} more"
-    summary += f". {MARSEC_DESCRIPTIONS.get(action, '')}"
+    # Lead with the most critical finding's own description
+    lead = sorted_signals[0].description
 
-    return summary
+    # Add supporting signals as brief context
+    parts = [lead]
+    for s in sorted_signals[1:3]:
+        # Use the signal's own description, truncated to the first sentence
+        desc = s.description.split(". ")[0]
+        parts.append(desc)
+
+    explanation = f"{vessel_label} ({vtype}): {'. '.join(parts)}."
+    explanation += f" {MARSEC_DESCRIPTIONS.get(action, '')}"
+
+    return explanation
 
 
 # ── Main Scoring Entry Point ──────────────────────────

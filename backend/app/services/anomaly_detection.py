@@ -293,6 +293,13 @@ def detect_heading_anomaly(
     if len(headings) < 5:
         return []
 
+    # Ships at anchor or moored naturally wobble heading due to wind/current.
+    # Only flag heading anomalies for vessels actively underway.
+    speeds = [p.speed_over_ground for p in positions if p.speed_over_ground is not None]
+    avg_speed = sum(speeds) / len(speeds) if speeds else 0
+    if avg_speed < 2.0:
+        return []
+
     large_turns = 0
     total_turn = 0
     for i in range(1, len(headings)):
@@ -946,8 +953,11 @@ def detect_type_mismatch(
     avg_speed = sum(speeds) / len(speeds)
     mismatch_factors = []
 
-    # Speed mismatch: consistently outside expected range
-    if avg_speed < expected_lo * 0.5 and expected_lo > 2:
+    # Speed mismatch: consistently outside expected range.
+    # IMPORTANT: Ships at anchor or moored (< 3 kt) are NOT suspicious simply
+    # for being slow. Every ship parks eventually. Only flag if speed is
+    # actively abnormal (too fast, or slow while clearly underway).
+    if avg_speed < expected_lo * 0.5 and expected_lo > 2 and avg_speed >= 3.0:
         mismatch_factors.append(f"avg speed {avg_speed:.1f} kt (expected {expected_lo}-{expected_hi} kt)")
     elif avg_speed > expected_hi * 1.5:
         mismatch_factors.append(f"avg speed {avg_speed:.1f} kt (expected {expected_lo}-{expected_hi} kt)")

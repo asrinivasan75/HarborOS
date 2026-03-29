@@ -498,7 +498,35 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
       const positions = detail.positions;
       if (!positions || positions.length < 2) return;
 
-      const coordinates = positions.map((p) => [p.longitude, p.latitude]);
+      // Break trail into segments at implausible position jumps
+      // (avoids drawing straight lines over land when AIS data teleports)
+      const segments: [number, number][][] = [];
+      let currentSegment: [number, number][] = [[positions[0].longitude, positions[0].latitude]];
+
+      for (let i = 1; i < positions.length; i++) {
+        const prev = positions[i - 1];
+        const curr = positions[i];
+        const dtHours = (new Date(curr.timestamp).getTime() - new Date(prev.timestamp).getTime()) / 3_600_000;
+        if (dtHours <= 0) {
+          currentSegment.push([curr.longitude, curr.latitude]);
+          continue;
+        }
+        // Approximate distance in nautical miles using equirectangular projection
+        const dLat = (curr.latitude - prev.latitude) * 60;
+        const dLon = (curr.longitude - prev.longitude) * 60 * Math.cos((curr.latitude * Math.PI) / 180);
+        const distNm = Math.sqrt(dLat * dLat + dLon * dLon);
+        const impliedSpeed = distNm / dtHours;
+
+        if (impliedSpeed > 60) {
+          // Break — this jump is physically impossible, start a new segment
+          if (currentSegment.length >= 2) segments.push(currentSegment);
+          currentSegment = [[curr.longitude, curr.latitude]];
+        } else {
+          currentSegment.push([curr.longitude, curr.latitude]);
+        }
+      }
+      if (currentSegment.length >= 2) segments.push(currentSegment);
+      if (segments.length === 0) return;
 
       mapRef.current.addSource("vessel-trail", {
         type: "geojson",
@@ -506,8 +534,8 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
           type: "Feature",
           properties: {},
           geometry: {
-            type: "LineString",
-            coordinates,
+            type: "MultiLineString",
+            coordinates: segments,
           },
         },
       });

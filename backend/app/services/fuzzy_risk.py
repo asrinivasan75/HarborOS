@@ -68,12 +68,14 @@ INSPECTION_SETS = {
 }
 
 # Output: risk_level (0-100), aligned with ISPS MARSEC levels
+# Tuned so that single low-severity signals stay in MONITOR range,
+# and VERIFY/ESCALATE require multiple strong converging signals.
 RISK_OUTPUT_SETS = {
-    "safe":     lambda x: trapmf(x, (0, 0, 8, 18)),
-    "low":      lambda x: trimf(x, (12, 25, 40)),
-    "medium":   lambda x: trimf(x, (32, 50, 68)),
-    "high":     lambda x: trimf(x, (60, 78, 92)),
-    "critical": lambda x: trapmf(x, (85, 93, 100, 100)),
+    "safe":     lambda x: trapmf(x, (0, 0, 5, 15)),
+    "low":      lambda x: trimf(x, (10, 22, 38)),
+    "medium":   lambda x: trimf(x, (32, 48, 65)),
+    "high":     lambda x: trimf(x, (58, 75, 90)),
+    "critical": lambda x: trapmf(x, (82, 92, 100, 100)),
 }
 
 
@@ -156,19 +158,30 @@ def fuzzy_risk_score(
 
     Returns (risk_score 0-100, marsec_action, debug_info).
     """
-    # Anomaly severity drives the base score (0-80 range)
-    base = anomaly_severity * 80
-    # Metadata gaps and inspection history amplify existing risk
-    meta_boost = 1.0 + metadata_deficiency * 0.5   # 1.0x to 1.5x
-    insp_boost = 1.0 + inspection_risk * 0.3        # 1.0x to 1.3x
-    score = min(100.0, base * meta_boost * insp_boost)
+    # Evaluate all fuzzy rules using the raw inputs
+    activations = {
+        "safe": 0.0,
+        "low": 0.0,
+        "medium": 0.0,
+        "high": 0.0,
+        "critical": 0.0,
+    }
+
+    for rule in RULES:
+        strength = _evaluate_rule(anomaly_severity, metadata_deficiency, inspection_risk, rule)
+        result_set = rule[3]
+        if strength > activations[result_set]:
+            activations[result_set] = strength
+
+    # Defuzzify the aggregated activations using centroid method (0-100)
+    score = defuzzify_centroid(activations)
     score = round(score, 1)
+
     action = marsec_action(score)
 
     debug = {
-        "base": round(base, 1),
-        "meta_boost": round(meta_boost, 3),
-        "insp_boost": round(insp_boost, 3),
+        "resolved_score": score,
+        "activations": {k: round(v, 3) for k, v in activations.items()},
         "input_anomaly": round(anomaly_severity, 3),
         "input_metadata": round(metadata_deficiency, 3),
         "input_inspection": round(inspection_risk, 3),
@@ -178,10 +191,10 @@ def fuzzy_risk_score(
 
 def marsec_action(score: float) -> str:
     """Map risk score to ISPS MARSEC-aligned action."""
-    if score >= 65:
+    if score >= 75:
         return "escalate"   # MARSEC 3
-    elif score >= 35:
+    elif score >= 50:
         return "verify"     # MARSEC 2
-    elif score >= 12:
+    elif score >= 20:
         return "monitor"    # MARSEC 1 (elevated)
     return "ignore"

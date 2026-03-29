@@ -81,6 +81,11 @@ def list_vessels(
     )
     if region:
         rows = rows.filter(VesselORM.region == region)
+        
+    rows = rows.order_by(
+        AlertORM.risk_score.desc().nulls_last(),
+        PositionReportORM.timestamp.desc().nulls_last()
+    )
     rows = rows.limit(limit).offset(offset).all()
 
     items = []
@@ -917,8 +922,6 @@ def receive_edge_node_alert(
     )
     db.add(dark_pos)
 
-    # Create/update alert for the dark vessel
-    risk_score = min(100, confidence * 100)
     alert = db.query(AlertORM).filter(
         AlertORM.vessel_id == dark_vessel_id, AlertORM.status == "active"
     ).first()
@@ -944,8 +947,14 @@ def receive_edge_node_alert(
         f"This vessel does not appear in any AIS database."
     )
 
+    # Apply standard risk scoring matrix instead of bypassing it
+    schema = AnomalySignalSchema(**signal)
+    assessment = compute_risk_assessment(dark_vessel, [schema])
+    risk_score = assessment.risk_score
+
     if alert:
         alert.risk_score = risk_score
+        alert.recommended_action = assessment.recommended_action
         alert.explanation = explanation
         alert.anomaly_signals_json = json.dumps([signal])
     else:
@@ -953,7 +962,7 @@ def receive_edge_node_alert(
             id=str(uuid.uuid4()),
             vessel_id=dark_vessel_id,
             risk_score=risk_score,
-            recommended_action="escalate",
+            recommended_action=assessment.recommended_action,
             explanation=explanation,
             anomaly_signals_json=json.dumps([signal]),
         )

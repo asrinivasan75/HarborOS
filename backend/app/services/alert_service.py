@@ -73,6 +73,15 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
         )
 
         if not positions:
+            # Resolve any ghost alerts for vessels with no position data
+            ghost_alert = (
+                db.query(AlertORM)
+                .filter(AlertORM.vessel_id == vessel.id, AlertORM.status == "active")
+                .first()
+            )
+            if ghost_alert:
+                ghost_alert.status = "resolved"
+                ghost_alert.explanation = "No position data available for behavioral assessment."
             continue
 
         signals = run_anomaly_detection(
@@ -84,8 +93,18 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
 
         assessment = compute_risk_assessment(vessel, signals)
 
-        # Skip low-confidence assessments
-        if assessment.risk_score < 12:
+        # Check for existing active alert FIRST so we can clear it if risk drops
+        existing = (
+            db.query(AlertORM)
+            .filter(AlertORM.vessel_id == vessel.id, AlertORM.status == "active")
+            .first()
+        )
+
+        # Skip low-confidence assessments, but clear active alerts if they exist
+        if assessment.risk_score < 20:
+            if existing:
+                existing.status = "resolved"
+                existing.explanation = "Behavior returned to normal; risk score dropped below threshold."
             continue
 
         # COLREGS non-compliance alone isn't enough for an alert — it
@@ -93,14 +112,10 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
         # (AIS gap, spoofing, identity deception) to warrant operator attention.
         signal_types = set(s.anomaly_type for s in signals)
         if signal_types <= {AnomalyType.COLLISION_RISK}:
+            if existing:
+                existing.status = "resolved"
+                existing.explanation = "Elevated risk resolved down to standard COLREGS warning."
             continue
-
-        # Check for existing active alert
-        existing = (
-            db.query(AlertORM)
-            .filter(AlertORM.vessel_id == vessel.id, AlertORM.status == "active")
-            .first()
-        )
 
         if existing:
             existing.risk_score = assessment.risk_score
