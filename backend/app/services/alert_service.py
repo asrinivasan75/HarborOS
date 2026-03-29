@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.domain import (
     VesselORM, PositionReportORM, GeofenceORM,
     AlertORM, AnomalySignalORM, AlertStatus,
-    AlertSchema, AnomalySignalSchema
+    AlertSchema, AnomalySignalSchema, AnomalyType
 )
 from app.services.anomaly_detection import run_anomaly_detection, compute_regional_stats
 from app.services.risk_scoring import compute_risk_assessment
@@ -84,8 +84,15 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
 
         assessment = compute_risk_assessment(vessel, signals)
 
-        # Skip if risk is negligible (no signals AND good metadata)
-        if assessment.risk_score < 10:
+        # Skip low-confidence assessments
+        if assessment.risk_score < 12:
+            continue
+
+        # COLREGS non-compliance alone isn't enough for an alert — it
+        # boosts other suspicious signals but needs additional context
+        # (AIS gap, spoofing, identity deception) to warrant operator attention.
+        signal_types = set(s.anomaly_type for s in signals)
+        if signal_types <= {AnomalyType.COLLISION_RISK}:
             continue
 
         # Check for existing active alert

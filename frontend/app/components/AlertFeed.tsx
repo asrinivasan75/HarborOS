@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import type { Alert } from "@/app/lib/api";
+import { riskTextClass, riskGlowClass, riskLevel } from "@/app/lib/risk";
 
 interface AlertFeedProps {
   alerts: Alert[];
@@ -19,25 +20,35 @@ function actionStyle(action: string) {
     case "escalate": return { bg: "bg-red-500/10", text: "text-red-400", border: "border-red-500/25", dot: "bg-red-400" };
     case "verify": return { bg: "bg-orange-500/10", text: "text-orange-400", border: "border-orange-500/25", dot: "bg-orange-400" };
     case "monitor": return { bg: "bg-yellow-500/10", text: "text-yellow-400", border: "border-yellow-500/25", dot: "bg-yellow-400" };
+    case "normal": return { bg: "bg-green-500/10", text: "text-green-400", border: "border-green-500/25", dot: "bg-green-400" };
     default: return { bg: "bg-slate-500/10", text: "text-slate-400", border: "border-slate-500/25", dot: "bg-slate-400" };
   }
 }
 
-function riskColor(score: number): string {
-  if (score >= 70) return "text-red-400";
-  if (score >= 45) return "text-orange-400";
-  if (score >= 25) return "text-yellow-400";
-  return "text-green-400";
-}
+const riskColor = riskTextClass;
+const riskGlow = riskGlowClass;
 
-function riskGlow(score: number): string {
-  if (score >= 70) return "shadow-red-500/20";
-  if (score >= 45) return "shadow-orange-500/20";
-  return "";
+const SIGNAL_LABELS: Record<string, string> = {
+  ais_gap: "AIS dark period",
+  kinematic_implausibility: "position spoofing",
+  geofence_breach: "restricted zone breach",
+  type_mismatch: "identity mismatch",
+  route_deviation: "route deviation",
+  loitering: "loitering",
+  zone_lingering: "zone lingering",
+  speed_anomaly: "speed anomaly",
+  heading_anomaly: "course anomaly",
+  statistical_outlier: "regional outlier",
+  collision_risk: "COLREGS non-compliance",
+  dark_ship_optical: "dark ship (optical)",
+};
+
+function signalLabel(type: string): string {
+  return SIGNAL_LABELS[type] ?? type.replace(/_/g, " ");
 }
 
 function timeAgo(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = new Date(dateStr.endsWith("Z") ? dateStr : dateStr + "Z");
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
@@ -56,7 +67,7 @@ function sortAlerts(alerts: Alert[], key: SortKey, ascending: boolean): Alert[] 
       case "name":
         return dir * (a.vessel_name || "").localeCompare(b.vessel_name || "");
       case "time":
-        return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        return dir * (new Date(a.created_at.endsWith("Z") ? a.created_at : a.created_at + "Z").getTime() - new Date(b.created_at.endsWith("Z") ? b.created_at : b.created_at + "Z").getTime());
     }
   });
 }
@@ -147,7 +158,9 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
           </div>
         ) : (
           filtered.map((alert) => {
-            const style = actionStyle(alert.recommended_action);
+            const level = riskLevel(alert.risk_score);
+            const displayAction = level === "normal" ? "normal" : alert.recommended_action;
+            const style = actionStyle(displayAction);
             const isSelected = selectedAlertId === alert.id;
             return (
               <button
@@ -175,7 +188,7 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
                 <div className="flex items-center gap-2 mb-2">
                   <span className={`inline-flex items-center gap-1 text-[9px] font-semibold uppercase px-2 py-0.5 rounded-md border ${style.bg} ${style.text} ${style.border}`}>
                     <span className={`w-1 h-1 rounded-full ${style.dot}`} />
-                    {alert.recommended_action}
+                    {displayAction}
                   </span>
                   <span className="text-[10px] text-slate-600">
                     {timeAgo(alert.created_at)}
@@ -183,7 +196,7 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
                 </div>
                 <div className="flex items-end justify-between">
                   <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed flex-1">
-                    {alert.anomaly_signals.map((s) => s.anomaly_type.replace(/_/g, " ")).join(", ")}
+                    {alert.anomaly_signals.map((s) => signalLabel(s.anomaly_type)).join(", ")}
                   </p>
                   {onCompare && (
                     <span

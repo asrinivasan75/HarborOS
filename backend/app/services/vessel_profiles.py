@@ -115,17 +115,19 @@ VESSEL_PROFILES: dict[str, dict] = {
     },
 }
 
-# Default profile for unknown vessel types — treat as moderately suspicious
+# Default profile for unknown/other vessel types.
+# Relaxed thresholds: "other" includes pilot boats, work boats, research
+# vessels, etc. that maneuver frequently in harbor environments.
 _DEFAULT_PROFILE: dict = {
     "speed_range": (0, 20),
     "typical_speed": 10,
-    "loiter_tolerance_min": 15,
-    "loiter_severity_mult": 1.0,
-    "heading_change_deg": 30,
-    "heading_severity_mult": 1.0,
-    "ais_gap_tolerance_min": 10,
-    "zone_severity_mult": 1.0,
-    "speed_delta_threshold": 3,
+    "loiter_tolerance_min": 30,
+    "loiter_severity_mult": 0.7,
+    "heading_change_deg": 45,
+    "heading_severity_mult": 0.6,
+    "ais_gap_tolerance_min": 15,
+    "zone_severity_mult": 0.8,
+    "speed_delta_threshold": 5,
 }
 
 

@@ -1,14 +1,14 @@
 """
-Heuristic-based anomaly detection engine.
+Research-backed anomaly detection engine.
 
-Each detector is a function that takes vessel data and returns anomaly signals.
-Modular: add new detectors by adding functions to DETECTORS list.
+Detectors use peer-reviewed formulas and IMO standards:
+- Collision risk: Mou et al. 2021 exponential CPA formula with F_angle
+- Loitering: F(c) course-change intensity (PMC 2023, 97% accuracy)
+- AIS gaps: IMO Class A speed-dependent reporting intervals
+- Dark vessels: Speed-aware silence detection (Global Fishing Watch)
 
-Vessel-type-aware: detectors use per-type behavior profiles to adjust
-thresholds (e.g. fishing boats loitering is normal, cargo ships is not).
-
-History-aware: detectors can compare against learned baselines from
-archived Parquet data to flag route deviations and behavioral outliers.
+Also vessel-type-aware (per-type behavior profiles) and history-aware
+(learned baselines from archived Parquet data).
 """
 
 from __future__ import annotations
@@ -25,6 +25,11 @@ from app.models.domain import (
 )
 from app.services.vessel_profiles import get_profile
 from app.services.pattern_learning import LearnedBaseline
+
+
+def _fmt_type(vessel_type: str | None) -> str:
+    """Format vessel type for display: 'high_speed' → 'high speed'."""
+    return (vessel_type or "unknown").replace("_", " ")
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -78,18 +83,25 @@ def detect_geofence_breach(
         if not coords:
             continue
 
-        for pos in positions[-10:]:
-            if point_in_polygon(pos.latitude, pos.longitude, coords):
-                base_severity = 0.9 if gf.severity == "high" else 0.6
-                severity = min(0.95, base_severity * zone_mult)
-                signals.append(AnomalySignalSchema(
-                    anomaly_type=AnomalyType.GEOFENCE_BREACH,
-                    severity=severity,
-                    description=f"{vessel.vessel_type or 'Vessel'} entered {gf.zone_type} zone: {gf.name}",
-                    details={"geofence_id": gf.id, "zone_type": gf.zone_type,
-                             "vessel_type": vessel.vessel_type, "severity_mult": zone_mult}
-                ))
-                break
+        checked = positions[-10:]
+        inside_count = sum(1 for pos in checked if point_in_polygon(pos.latitude, pos.longitude, coords))
+        if inside_count > 0:
+            base_severity = 0.9 if gf.severity == "high" else 0.6
+            # Scale by breach duration: more positions inside = more sustained presence
+            ratio = inside_count / len(checked)
+            depth_factor = 0.4 + 0.6 * ratio  # 0.46 (1/10) to 1.0 (all inside)
+            # Scale by speed: use actual speed value for continuous variation
+            latest_speed = positions[-1].speed_over_ground or 0
+            speed_factor = 0.5 + 0.5 * min(latest_speed / 15.0, 1.0)
+            severity = min(0.65, base_severity * zone_mult * depth_factor * speed_factor)
+            signals.append(AnomalySignalSchema(
+                anomaly_type=AnomalyType.GEOFENCE_BREACH,
+                severity=severity,
+                description=f"{inside_count}/{len(checked)} recent positions inside {gf.zone_type} zone \"{gf.name}\". Sustained unauthorized presence.",
+                details={"geofence_id": gf.id, "zone_type": gf.zone_type,
+                         "vessel_type": vessel.vessel_type, "severity_mult": zone_mult,
+                         "positions_inside": inside_count, "positions_checked": len(checked)}
+            ))
     return signals
 
 
@@ -98,49 +110,91 @@ def detect_loitering(
     positions: list[PositionReportORM],
     **kwargs,
 ) -> list[AnomalySignalSchema]:
-    """Detect if vessel is stationary or near-stationary for too long.
+    """Detect loitering using F(c) course-change intensity formula.
 
-    Threshold and severity are adjusted by vessel type: fishing boats and
-    tugs are expected to loiter, cargo ships and passenger vessels are not.
+    F(c) = (Σ|ΔCourse| × Σ Speed) / (180° × BoundingBoxArea)
+
+    Key thresholds from research:
+    - Speed 3 kt separates anchored from actively loitering
+    - Anchor exclusion: bounding box < 0.17 nm²
+    - Higher F(c) = more suspicious turning in a confined area
+
+    Reference: "Loitering Behavior Detection by Spatiotemporal
+    Characteristics" (PMC 2023, 97% accuracy, 92% F-score).
     """
-    if len(positions) < 3:
+    if len(positions) < 5:
         return []
 
     profile = get_profile(vessel.vessel_type)
-    tolerance_min = profile["loiter_tolerance_min"]
     severity_mult = profile["loiter_severity_mult"]
 
-    recent = positions[-20:]
-    slow_count = sum(1 for p in recent if p.speed_over_ground is not None and p.speed_over_ground < 1.0)
+    recent = positions[-30:]  # Larger window for F(c)
 
-    if slow_count < 3:
+    valid = [
+        p for p in recent
+        if p.speed_over_ground is not None and p.course_over_ground is not None
+    ]
+    if len(valid) < 5:
         return []
 
-    lats = [p.latitude for p in recent]
-    lons = [p.longitude for p in recent]
-    spread = haversine_distance(min(lats), min(lons), max(lats), max(lons))
+    # Bounding box area (nm²)
+    lats = [p.latitude for p in valid]
+    lons = [p.longitude for p in valid]
+    mean_lat = sum(lats) / len(lats)
+    width_nm = (max(lons) - min(lons)) * 60 * math.cos(math.radians(mean_lat))
+    height_nm = (max(lats) - min(lats)) * 60
+    bbox_area = max(width_nm * height_nm, 0.001)
 
-    if spread > 0.5:
+    # Anchor exclusion: bbox < 0.17 nm² AND avg speed < 3 kt
+    speeds = [p.speed_over_ground for p in valid]
+    avg_speed = sum(speeds) / len(speeds)
+    if bbox_area < 0.17 and avg_speed < 3.0:
         return []
 
-    time_span = (recent[-1].timestamp - recent[0].timestamp).total_seconds() / 60
-    if time_span < tolerance_min:
+    # F(c) = (Σ|ΔCourse| × Σ Speed) / (180 × BboxArea)
+    total_course_change = 0.0
+    total_speed = sum(speeds)
+    for i in range(1, len(valid)):
+        delta = abs(valid[i].course_over_ground - valid[i - 1].course_over_ground)
+        if delta > 180:
+            delta = 360 - delta
+        total_course_change += delta
+
+    fc = (total_course_change * total_speed) / (180.0 * bbox_area)
+
+    time_span_min = (valid[-1].timestamp - valid[0].timestamp).total_seconds() / 60
+    if time_span_min < 5 or fc < 50:
         return []
 
-    base_severity = min(0.9, 0.3 + (time_span / 120))
-    severity = min(0.95, base_severity * severity_mult)
-
+    # Severity from F(c) via log scaling, adjusted by vessel type
+    base_severity = min(0.55, 0.15 + math.log10(max(fc, 1)) * 0.10)
+    severity = min(0.65, base_severity * severity_mult)
     if severity < 0.05:
         return []
 
-    vtype = vessel.vessel_type or "unknown"
+    vtype = _fmt_type(vessel.vessel_type)
+    spread_nm = haversine_distance(min(lats), min(lons), max(lats), max(lons))
+
     return [AnomalySignalSchema(
         anomaly_type=AnomalyType.LOITERING,
         severity=severity,
-        description=f"{vtype} loitering for {int(time_span)} min in {spread:.2f}nm area (tolerance: {tolerance_min} min for {vtype})",
-        details={"duration_minutes": int(time_span), "spread_nm": round(spread, 3),
-                 "vessel_type": vtype, "tolerance_min": tolerance_min,
-                 "severity_mult": severity_mult}
+        description=(
+            f"Circling in {spread_nm:.1f}nm area for {int(time_span_min)} min "
+            f"({total_course_change:.0f}° course change). "
+            f"Possible surveillance, rendezvous, or drop-off activity."
+        ),
+        details={
+            "fc_score": round(fc, 1),
+            "total_course_change_deg": round(total_course_change, 0),
+            "total_speed_sum_kt": round(total_speed, 1),
+            "bbox_area_sqnm": round(bbox_area, 4),
+            "duration_minutes": int(time_span_min),
+            "spread_nm": round(spread_nm, 3),
+            "avg_speed_kt": round(avg_speed, 1),
+            "vessel_type": vtype,
+            "severity_mult": severity_mult,
+            "method": "fc_pmc2023",
+        },
     )]
 
 
@@ -177,11 +231,19 @@ def detect_speed_anomaly(
     signals = []
 
     if large_changes >= 2:
-        severity = min(0.8, 0.3 + (large_changes * 0.1))
+        # Use both count and max magnitude for continuous variation
+        change_factor = min(1.0, max_change / 30) * 0.08
+        severity = min(0.65, 0.18 + (large_changes * 0.06) + change_factor)
+        # Clearly impossible speeds (>50kt) suggest data quality issues, not evasive behavior
+        if max_change > 50:
+            severity = min(severity, 0.45)
+            cause = "likely data/transponder error"
+        else:
+            cause = "may indicate evasive maneuvering"
         signals.append(AnomalySignalSchema(
             anomaly_type=AnomalyType.SPEED_ANOMALY,
             severity=severity,
-            description=f"Erratic speed changes ({large_changes} rapid changes, max {max_change:.1f} kt delta, threshold: {speed_threshold} kt for {vessel.vessel_type or 'unknown'})",
+            description=f"{large_changes} rapid speed changes detected (max {max_change:.1f} kt jump, threshold {speed_threshold} kt). {cause.capitalize()}.",
             details={"rapid_changes": large_changes, "max_delta_knots": round(max_change, 1),
                      "threshold_knots": speed_threshold, "vessel_type": vessel.vessel_type}
         ))
@@ -197,11 +259,11 @@ def detect_speed_anomaly(
 
             z_score = abs(avg_speed - learned_mean) / learned_std if learned_std > 0.5 else 0
             if z_score > 2.5:
-                severity = min(0.75, 0.3 + (z_score - 2.5) * 0.15)
+                severity = min(0.55, 0.2 + (z_score - 2.5) * 0.10)
                 signals.append(AnomalySignalSchema(
                     anomaly_type=AnomalyType.SPEED_ANOMALY,
                     severity=severity,
-                    description=f"Speed deviates from learned pattern: avg {avg_speed:.1f} kt vs historical {learned_mean:.1f}±{learned_std:.1f} kt for {vessel.vessel_type or 'unknown'} in {vessel.region or 'region'}",
+                    description=f"Averaging {avg_speed:.1f} kt — regional baseline for {_fmt_type(vessel.vessel_type)} is {learned_mean:.1f} kt (±{learned_std:.1f}). Significant deviation from expected pattern.",
                     details={"avg_speed": round(avg_speed, 1), "learned_mean": learned_mean,
                              "learned_std": learned_std, "z_score": round(z_score, 2),
                              "source": "learned_baseline"}
@@ -241,24 +303,55 @@ def detect_heading_anomaly(
             large_turns += 1
         total_turn += delta
 
-    if large_turns < 3:
+    if large_turns < 5:
         return []
 
-    base_severity = min(0.7, 0.2 + (large_turns * 0.1))
-    severity = min(0.85, base_severity * severity_mult)
+    # Use both count and magnitude for continuous variation
+    turn_intensity = total_turn / max(len(headings), 1)  # avg degrees per step
+    base_severity = min(0.50, 0.10 + (large_turns * 0.035) + (turn_intensity / 180) * 0.12)
+    severity = min(0.65, base_severity * severity_mult)
 
     if severity < 0.05:
         return []
 
-    vtype = vessel.vessel_type or "unknown"
+    vtype = _fmt_type(vessel.vessel_type)
     return [AnomalySignalSchema(
         anomaly_type=AnomalyType.HEADING_ANOMALY,
         severity=severity,
-        description=f"Erratic heading changes ({large_turns} turns >{turn_threshold}° for {vtype}, {total_turn:.0f}° total)",
+        description=f"{large_turns} sharp course changes (>{turn_threshold}°), {total_turn:.0f}° total. Possible search pattern or evasive maneuvering.",
         details={"large_turns": large_turns, "total_turn_degrees": round(total_turn, 0),
                  "turn_threshold_deg": turn_threshold, "vessel_type": vtype,
                  "severity_mult": severity_mult}
     )]
+
+
+def _imo_expected_interval_sec(speed_kt: float, is_turning: bool = False) -> float:
+    """IMO Class A mandated AIS reporting interval (seconds).
+
+    Reference: IMO Resolution A.1106(29), ITU-R M.1371.
+    """
+    if speed_kt < 3:
+        return 180.0   # At anchor: 3 min
+    elif speed_kt <= 14:
+        return 3.3 if is_turning else 10.0
+    elif speed_kt <= 23:
+        return 2.0 if is_turning else 6.0
+    return 2.0          # > 23 kt: always 2 sec
+
+
+def _speed_gap_threshold_min(speed_kt: float) -> float:
+    """Speed-dependent gap alert threshold (minutes).
+
+    Scaled from IMO intervals for realistic system polling rates.
+    Faster vessels → shorter acceptable gap.
+    """
+    if speed_kt < 3:
+        return 15.0   # Anchored: lenient
+    elif speed_kt <= 14:
+        return 6.0    # Slow underway
+    elif speed_kt <= 23:
+        return 4.0    # Fast underway
+    return 3.0         # Very fast: tight threshold
 
 
 def detect_ais_gap(
@@ -266,35 +359,81 @@ def detect_ais_gap(
     positions: list[PositionReportORM],
     **kwargs,
 ) -> list[AnomalySignalSchema]:
-    """Detect gaps in AIS transmission (possible intentional dark period).
+    """Detect AIS transmission gaps using speed-dependent IMO intervals.
 
-    Military and fishing vessels have longer normal gaps.
-    Passenger vessels should transmit constantly.
+    IMO Class A mandated intervals vary by speed:
+      At anchor (<3 kt): every 3 min
+      Underway 0-14 kt:  every 10 sec
+      Underway 14-23 kt: every 6 sec
+      Underway >23 kt:   every 2 sec
+
+    Gap severity scales with the ratio of actual gap to expected interval,
+    making gaps at higher speeds more suspicious (more missed reports).
+
+    Reference: IMO Resolution A.1106(29), ITU-R M.1371.
     """
     if len(positions) < 2:
         return []
 
     profile = get_profile(vessel.vessel_type)
-    gap_tolerance = profile["ais_gap_tolerance_min"]
 
     gaps = []
     for i in range(1, len(positions)):
-        gap = (positions[i].timestamp - positions[i-1].timestamp).total_seconds() / 60
-        if gap > gap_tolerance:
-            gaps.append(gap)
+        gap_sec = (positions[i].timestamp - positions[i - 1].timestamp).total_seconds()
+        gap_min = gap_sec / 60
+
+        speed = positions[i - 1].speed_over_ground or 0
+
+        # Detect course changes for interval selection
+        is_turning = False
+        if (positions[i - 1].course_over_ground is not None
+                and i >= 2 and positions[i - 2].course_over_ground is not None):
+            delta_cog = abs(positions[i - 1].course_over_ground - positions[i - 2].course_over_ground)
+            if delta_cog > 180:
+                delta_cog = 360 - delta_cog
+            is_turning = delta_cog > 10
+
+        expected_sec = _imo_expected_interval_sec(speed, is_turning)
+        gap_ratio = gap_sec / expected_sec if expected_sec > 0 else 0
+        threshold_min = _speed_gap_threshold_min(speed)
+
+        if gap_min > threshold_min:
+            gaps.append({
+                "gap_min": gap_min,
+                "speed_kt": speed,
+                "gap_ratio": gap_ratio,
+                "expected_sec": expected_sec,
+            })
 
     if not gaps:
         return []
 
-    max_gap = max(gaps)
-    severity = min(0.85, 0.4 + (max_gap / 60) * 0.3)
-    vtype = vessel.vessel_type or "unknown"
+    worst = max(gaps, key=lambda g: g["gap_ratio"])
+
+    # Severity from gap ratio (log scale — diminishing returns for very large gaps)
+    severity = min(0.55, 0.15 + math.log1p(worst["gap_ratio"] / 100) * 0.15)
+    # Boost for fast vessels (more reports missing per minute)
+    if worst["speed_kt"] > 14:
+        severity = min(0.65, severity * 1.15)
+
+    vtype = _fmt_type(vessel.vessel_type)
     return [AnomalySignalSchema(
         anomaly_type=AnomalyType.AIS_GAP,
         severity=severity,
-        description=f"AIS gap: {int(max_gap)} min gap ({len(gaps)} gaps, tolerance: {gap_tolerance} min for {vtype})",
-        details={"max_gap_minutes": int(max_gap), "total_gaps": len(gaps),
-                 "gap_tolerance_min": gap_tolerance, "vessel_type": vtype}
+        description=(
+            f"{int(worst['gap_min'])} min silent at {worst['speed_kt']:.0f} kt — "
+            f"~{int(worst['gap_ratio'])} expected reports missed "
+            f"(IMO interval: {worst['expected_sec']:.0f}s at this speed)."
+        ),
+        details={
+            "max_gap_minutes": int(worst["gap_min"]),
+            "speed_at_gap_kt": round(worst["speed_kt"], 1),
+            "gap_ratio": round(worst["gap_ratio"], 0),
+            "expected_interval_sec": round(worst["expected_sec"], 1),
+            "total_gaps": len(gaps),
+            "vessel_type": vtype,
+            "method": "imo_speed_dependent",
+        },
     )]
 
 
@@ -303,55 +442,66 @@ def detect_dark_vessel(
     positions: list[PositionReportORM],
     **kwargs,
 ) -> list[AnomalySignalSchema]:
-    """Detect vessels that have stopped transmitting AIS entirely.
+    """Detect vessels that have gone dark (stopped transmitting).
 
-    Unlike detect_ais_gap (which finds gaps within track history), this checks
-    whether the vessel's most recent transmission is stale relative to the
-    current time — i.e. the vessel has gone dark.
+    Severity scales with duration AND last known speed — a fast vessel
+    going silent is far more concerning than a slow one.
+
+    Reference: Global Fishing Watch (55,000+ deliberate AIS disabling
+    events, 1.6M hours/year untracked globally).
     """
     if len(positions) < 4:
         return []
 
     now = datetime.utcnow()
     last_report = positions[-1].timestamp
+    last_speed = positions[-1].speed_over_ground or 0
 
     minutes_since_last = (now - last_report).total_seconds() / 60
-    if minutes_since_last < 15:
+
+    # Speed-dependent dark threshold
+    dark_threshold = _speed_gap_threshold_min(last_speed) * 2.5
+    if minutes_since_last < dark_threshold:
         return []
 
-    # Check that the vessel was transmitting regularly before going dark:
-    # need at least 3 consecutive intervals under 5 minutes.
+    # Verify vessel was transmitting regularly before going dark
     regular_count = 0
     intervals = []
     for i in range(1, len(positions)):
         interval_min = (positions[i].timestamp - positions[i - 1].timestamp).total_seconds() / 60
         intervals.append(interval_min)
-        if interval_min < 5:
+        expected_threshold = _speed_gap_threshold_min(positions[i - 1].speed_over_ground or 0)
+        if interval_min < expected_threshold:
             regular_count += 1
 
     if regular_count < 3:
         return []
 
-    # Compute average transmission interval from the regular intervals
-    regular_intervals = [iv for iv in intervals if iv < 5]
-    avg_interval = sum(regular_intervals) / len(regular_intervals)
+    regular_intervals = [iv for iv in intervals if iv < 10]
+    avg_interval = sum(regular_intervals) / len(regular_intervals) if regular_intervals else 5.0
 
     # Severity scales with dark duration
-    if minutes_since_last >= 60:
-        severity = 0.85
-    elif minutes_since_last >= 30:
-        severity = 0.6
-    else:
-        severity = 0.4
+    base_severity = min(0.55, 0.25 + (minutes_since_last / 60) * 0.15)
+    # Speed boost: fast vessel going dark is more concerning
+    if last_speed > 14:
+        base_severity = min(0.65, base_severity * 1.15)
+    elif last_speed > 5:
+        base_severity = min(0.60, base_severity * 1.1)
 
     return [AnomalySignalSchema(
         anomaly_type=AnomalyType.AIS_GAP,
-        severity=severity,
-        description=f"Vessel went dark: last transmission {int(minutes_since_last)} minutes ago (was transmitting every {avg_interval:.1f} min)",
+        severity=base_severity,
+        description=(
+            f"No transmission for {int(minutes_since_last)} min — last seen at {last_speed:.0f} kt "
+            f"(was reporting every {avg_interval:.1f} min). Possible intentional AIS shutdown."
+        ),
         details={
             "minutes_since_last_report": int(minutes_since_last),
+            "last_known_speed_kt": round(last_speed, 1),
             "avg_transmission_interval_min": round(avg_interval, 1),
             "regular_interval_count": regular_count,
+            "dark_threshold_min": round(dark_threshold, 1),
+            "method": "dark_vessel_speed_aware",
         },
     )]
 
@@ -384,7 +534,7 @@ def detect_zone_lingering(
 
         time_in_zone = (in_zone_positions[-1].timestamp - in_zone_positions[0].timestamp).total_seconds() / 60
         if time_in_zone > 20:
-            severity = min(0.8, 0.4 + (time_in_zone / 90))
+            severity = min(0.60, 0.3 + (time_in_zone / 120))
             signals.append(AnomalySignalSchema(
                 anomaly_type=AnomalyType.ZONE_LINGERING,
                 severity=severity,
@@ -439,11 +589,21 @@ def detect_kinematic_implausibility(
     if impossible_jumps == 0:
         return []
 
-    severity = min(0.9, 0.5 + (impossible_jumps * 0.15))
+    # Use jump count + max magnitude for continuous variation
+    jump_factor = min(1.0, max_jump_nm / 20) * 0.06
+    severity = min(0.55, 0.20 + (impossible_jumps * 0.06) + jump_factor)
+    # Extremely large jumps (>10nm) are almost certainly data errors
+    if max_jump_nm > 10:
+        severity = min(severity, 0.40)
+        cause = "likely GPS/AIS data error rather than actual movement"
+    elif impossible_jumps >= 3:
+        cause = "possible position spoofing or severe equipment malfunction"
+    else:
+        cause = "may indicate equipment issues or brief data corruption"
     return [AnomalySignalSchema(
         anomaly_type=AnomalyType.KINEMATIC_IMPLAUSIBILITY,
         severity=severity,
-        description=f"Kinematic implausibility: {impossible_jumps} impossible position jump(s) detected (max {max_jump_nm:.1f}nm gap)",
+        description=f"{impossible_jumps} impossible position jump{'s' if impossible_jumps != 1 else ''} (max {max_jump_nm:.1f}nm). {cause.capitalize()}.",
         details={"impossible_jumps": impossible_jumps, "max_jump_nm": round(max_jump_nm, 2)},
     )]
 
@@ -495,17 +655,18 @@ def detect_statistical_outlier(
     else:
         heading_ratio = 1.0
 
-    # Combined deviation score
-    deviation = (speed_z * 0.6) + (max(0, heading_ratio - 1.5) * 0.4)
+    # Combined deviation: speed outlier + erratic heading (above-normal only)
+    heading_excess = max(0, heading_ratio - 1.5)  # Only penalize ABOVE-normal variance
+    deviation = (speed_z * 0.6) + (heading_excess * 0.4)
 
     if deviation < 1.0:
         return []
 
-    severity = min(0.85, 0.3 + (deviation * 0.2))
+    severity = min(0.65, 0.25 + (deviation * 0.15))
     return [AnomalySignalSchema(
         anomaly_type=AnomalyType.STATISTICAL_OUTLIER,
         severity=severity,
-        description=f"Vessel behavior deviates from regional norms (speed z-score: {speed_z:.1f}, heading variance ratio: {heading_ratio:.1f}x)",
+        description=f"Behavior deviates significantly from regional fleet (speed z-score {speed_z:.1f}, heading variance {heading_ratio:.1f}x normal).",
         details={
             "speed_z_score": round(speed_z, 2),
             "heading_variance_ratio": round(heading_ratio, 2),
@@ -514,92 +675,204 @@ def detect_statistical_outlier(
     )]
 
 
+def _crossing_f(bearing_deg: float) -> float:
+    """Crossing encounter F_angle. Peaks at 90° (beam-on) per Mou et al."""
+    deviation = abs(bearing_deg - 90) / 60  # 0 at 90°, 1 at edges
+    return 1.5 + 7.0 * max(0.0, 1.0 - deviation ** 1.5)
+
+
+def _compute_f_angle(bearing_deg: float) -> float:
+    """Encounter-type multiplier F_angle per Mou et al. 2021.
+
+    Smooth sinusoidal transitions at 45-60° and 150-165° eliminate
+    the abrupt risk jumps from the original 2010 formula.
+
+    Head-on (0-45°): F=1.0, Crossing (60-150°): up to 8.5,
+    Overtaking (165-180°): F=2.34.
+    """
+    b = bearing_deg % 360
+    if b > 180:
+        b = 360 - b  # Symmetry: use 0-180° range
+
+    if b <= 45:
+        return 1.0
+    elif b <= 60:
+        t = (b - 45) / 15
+        target = _crossing_f(60)
+        return 1.0 + (target - 1.0) * (0.5 - 0.5 * math.cos(math.pi * t))
+    elif b <= 150:
+        return _crossing_f(b)
+    elif b <= 165:
+        t = (b - 150) / 15
+        cf = _crossing_f(150)
+        return cf + (2.34 - cf) * (0.5 - 0.5 * math.cos(math.pi * t))
+    else:
+        return 2.34
+
+
+def _encounter_label(bearing_deg: float) -> str:
+    b = bearing_deg % 360
+    if b > 180:
+        b = 360 - b
+    if b <= 45:
+        return "head-on"
+    elif b <= 60:
+        return "head-on/crossing"
+    elif b <= 150:
+        return "crossing"
+    elif b <= 165:
+        return "crossing/overtaking"
+    return "overtaking"
+
+
+_ENCOUNTER_WHY = {
+    "head-on": "Head-on approach — COLREGS Rule 14 requires starboard turn.",
+    "head-on/crossing": "Transitional encounter angle.",
+    "crossing": "Crossing approach — give-way vessel expected to alter course.",
+    "crossing/overtaking": "Transitional encounter angle.",
+    "overtaking": "Overtaking approach — COLREGS Rule 13 requires keeping clear.",
+}
+
+
 def detect_collision_risk(
     vessel: VesselORM,
     positions: list[PositionReportORM],
     nearby_vessels: list[tuple] | None = None,
     **kwargs,
 ) -> list[AnomalySignalSchema]:
-    """Detect close approach / collision risk (CPA/TCPA analysis).
+    """COLREGS non-compliance: vessel maintaining course on close approach.
 
-    Based on the paper's 'collision risk' anomaly type: flag vessels on
-    converging courses with small closest point of approach.
+    Uses Mou et al. CPA/TCPA formula to identify close encounters, then
+    checks whether the vessel is making expected course corrections.
+    A vessel that maintains steady heading into a close encounter — instead
+    of maneuvering per COLREGS — may indicate hostile intent, autonomous
+    operation, or deliberate intimidation.
+
+    In a domain awareness context, we don't care about routine collision
+    avoidance. We care about vessels that REFUSE to follow the rules.
     """
-    if not nearby_vessels or len(positions) < 1:
+    if not nearby_vessels or len(positions) < 2:
         return []
 
     latest = positions[-1]
     if latest.speed_over_ground is None or latest.course_over_ground is None:
         return []
-
-    # Both vessels must be actively moving — anchored/moored vessels near
-    # each other is normal, not a collision risk
     if latest.speed_over_ground < 2.0:
         return []
 
-    signals = []
+    # Check if vessel has been making course corrections (COLREGS compliance)
+    recent_headings = [
+        p.course_over_ground for p in positions[-6:]
+        if p.course_over_ground is not None
+    ]
+    is_maneuvering = False
+    heading_stability = 0.0
+    if len(recent_headings) >= 3:
+        changes = []
+        for i in range(1, len(recent_headings)):
+            delta = abs(recent_headings[i] - recent_headings[i - 1])
+            if delta > 180:
+                delta = 360 - delta
+            changes.append(delta)
+        heading_stability = sum(changes) / len(changes)
+        # >8° avg change = vessel is actively maneuvering (following COLREGS)
+        is_maneuvering = heading_stability > 8.0
+
+    a = 1.5
+    b = 12.0
+
+    best_signal = None
+    best_cr = 0
     for other_id, other_lat, other_lon, other_sog, other_cog, other_name in nearby_vessels:
-        if len(signals) >= 2:  # Cap at 2 collision risk signals per vessel
-            break
         if other_id == vessel.id:
             continue
-        if other_sog is None or other_cog is None:
-            continue
-        # Other vessel must also be moving
-        if other_sog < 2.0:
+        if other_sog is None or other_cog is None or other_sog < 2.0:
             continue
 
         dist_nm = haversine_distance(latest.latitude, latest.longitude, other_lat, other_lon)
-
-        # Only check vessels within 0.5nm
-        if dist_nm > 0.5:
+        if dist_nm > 1.5:
             continue
 
-        # Simple CPA estimation: relative velocity approach
         v1_x = latest.speed_over_ground * math.sin(math.radians(latest.course_over_ground))
         v1_y = latest.speed_over_ground * math.cos(math.radians(latest.course_over_ground))
         v2_x = other_sog * math.sin(math.radians(other_cog))
         v2_y = other_sog * math.cos(math.radians(other_cog))
 
-        # Relative position (in approximate nm)
         dx = (other_lon - latest.longitude) * 60 * math.cos(math.radians(latest.latitude))
         dy = (other_lat - latest.latitude) * 60
 
-        # Relative velocity
         dvx = v2_x - v1_x
         dvy = v2_y - v1_y
-
         rel_speed_sq = dvx ** 2 + dvy ** 2
-        if rel_speed_sq < 1.0:
-            continue  # Not meaningfully converging
-
-        # Time to CPA
-        tcpa = -(dx * dvx + dy * dvy) / rel_speed_sq
-
-        if tcpa < 0 or tcpa > 0.25:  # Only care about next 15 minutes
+        if rel_speed_sq < 0.25:
             continue
 
-        # CPA distance
-        cpa_x = dx + dvx * tcpa
-        cpa_y = dy + dvy * tcpa
-        cpa_dist = math.sqrt(cpa_x ** 2 + cpa_y ** 2)
+        tcpa_hours = -(dx * dvx + dy * dvy) / rel_speed_sq
+        tcpa_min = tcpa_hours * 60
+        if tcpa_min < 0 or tcpa_min > 30:
+            continue
 
-        if cpa_dist < 0.1:  # CPA within 0.1nm (~185m) is genuinely dangerous
-            severity = min(0.95, 0.6 + (0.1 - cpa_dist) * 4)
-            tcpa_min = tcpa * 60
-            signals.append(AnomalySignalSchema(
+        cpa_x = dx + dvx * tcpa_hours
+        cpa_y = dy + dvy * tcpa_hours
+        dcpa = math.sqrt(cpa_x ** 2 + cpa_y ** 2)
+
+        bearing = math.degrees(math.atan2(dx, dy)) % 360
+        f_angle = _compute_f_angle(bearing)
+
+        base_cr = math.exp(-dcpa / a) * math.exp(-tcpa_min / b)
+        f_adjusted = 1.0 + math.log(max(f_angle, 1.0)) / math.log(8.5)
+        cr = min(1.0, base_cr * f_adjusted)
+
+        if cr < 0.25:
+            continue
+
+        severity = min(0.65, cr * 0.65)
+
+        # Defense reframe: vessel following COLREGS is normal — reduce severity.
+        # Vessel maintaining steady course into close encounter is suspicious.
+        if is_maneuvering:
+            severity *= 0.25  # Maneuvering = expected behavior, low concern
+        elif heading_stability < 3.0:
+            severity = min(0.65, severity * 1.3)  # Dead-steady approach = suspicious
+
+        if severity < 0.08:
+            continue
+
+        if cr > best_cr:
+            best_cr = cr
+            encounter = _encounter_label(bearing)
+            dcpa_meters = int(dcpa * 1852)
+
+            if is_maneuvering:
+                behavior = "Vessel is maneuvering (COLREGS-compliant), low concern."
+            elif heading_stability < 3.0:
+                behavior = "Vessel maintaining steady course with no avoidance maneuver — potential COLREGS non-compliance."
+            else:
+                behavior = "Minimal course correction observed."
+
+            best_signal = AnomalySignalSchema(
                 anomaly_type=AnomalyType.COLLISION_RISK,
                 severity=severity,
-                description=f"Collision risk with {other_name or other_id}: CPA {cpa_dist:.2f}nm in {tcpa_min:.0f} min",
+                description=(
+                    f"{encounter.title()} approach toward {other_name or other_id} — "
+                    f"CPA {dcpa:.2f}nm ({dcpa_meters}m) in {tcpa_min:.0f} min. "
+                    f"{behavior}"
+                ),
                 details={
                     "other_vessel": other_name or other_id,
-                    "cpa_nm": round(cpa_dist, 3),
+                    "collision_risk_cr": round(cr, 3),
+                    "dcpa_nm": round(dcpa, 3),
                     "tcpa_minutes": round(tcpa_min, 1),
+                    "f_angle": round(f_angle, 2),
+                    "encounter_type": encounter,
                     "current_distance_nm": round(dist_nm, 3),
+                    "heading_stability_deg": round(heading_stability, 1),
+                    "is_maneuvering": is_maneuvering,
+                    "method": "mou_2021_colregs",
                 },
-            ))
+            )
 
-    return signals
+    return [best_signal] if best_signal else []
 
 
 # ── Profile-Aware Detectors ───────────────────────────
@@ -634,12 +907,12 @@ def detect_route_deviation(
     if off_count < 2:
         return []
 
-    severity = min(0.8, 0.3 + (off_count / len(recent)) * 0.4 + (max_dist / 20) * 0.1)
-    vtype = vessel.vessel_type or "unknown"
+    severity = min(0.60, 0.2 + (off_count / len(recent)) * 0.3 + (max_dist / 20) * 0.08)
+    vtype = _fmt_type(vessel.vessel_type)
     return [AnomalySignalSchema(
         anomaly_type=AnomalyType.ROUTE_DEVIATION,
         severity=severity,
-        description=f"{vtype} operating outside learned route corridor ({off_count}/{len(recent)} positions off-track, {max_dist:.0f} cells from nearest corridor)",
+        description=f"{off_count}/{len(recent)} recent positions outside established route corridor for {vtype} traffic.",
         details={"off_corridor_positions": off_count, "total_checked": len(recent),
                  "max_distance_cells": round(max_dist, 1), "vessel_type": vtype,
                  "source": "learned_baseline"}
@@ -699,11 +972,17 @@ def detect_type_mismatch(
     if not mismatch_factors:
         return []
 
-    severity = min(0.7, 0.3 + len(mismatch_factors) * 0.2)
+    # Continuous severity: factor count + magnitude of speed deviation
+    speed_dev = 0.0
+    if avg_speed < expected_lo * 0.5 and expected_lo > 2:
+        speed_dev = min(1.0, (expected_lo * 0.5 - avg_speed) / max(expected_lo, 1))
+    elif avg_speed > expected_hi * 1.5:
+        speed_dev = min(1.0, (avg_speed - expected_hi * 1.5) / max(expected_hi, 1))
+    severity = min(0.55, 0.18 + len(mismatch_factors) * 0.12 + speed_dev * 0.08)
     return [AnomalySignalSchema(
         anomaly_type=AnomalyType.TYPE_MISMATCH,
         severity=severity,
-        description=f"Behavior doesn't match declared type '{vessel.vessel_type}': {'; '.join(mismatch_factors)}",
+        description=f"Declared as '{_fmt_type(vessel.vessel_type)}' but behavior doesn't match: {'; '.join(mismatch_factors)}. Possible identity deception.",
         details={"vessel_type": vessel.vessel_type, "mismatch_factors": mismatch_factors,
                  "avg_speed": round(avg_speed, 1)}
     )]

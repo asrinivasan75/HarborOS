@@ -1,6 +1,7 @@
 "use client";
 
 import type { VesselDetail } from "@/app/lib/api";
+import { riskTextClass, riskBgClass } from "@/app/lib/risk";
 
 interface VesselCompareProps {
   vessels: VesselDetail[];
@@ -10,18 +11,12 @@ interface VesselCompareProps {
 
 function riskColor(score: number | null): string {
   if (score === null) return "text-slate-400";
-  if (score >= 70) return "text-red-400";
-  if (score >= 45) return "text-orange-400";
-  if (score >= 25) return "text-yellow-400";
-  return "text-green-400";
+  return riskTextClass(score);
 }
 
 function riskBg(score: number | null): string {
   if (score === null) return "bg-slate-500/10";
-  if (score >= 70) return "bg-red-500/10";
-  if (score >= 45) return "bg-orange-500/10";
-  if (score >= 25) return "bg-yellow-500/10";
-  return "bg-green-500/10";
+  return riskBgClass(score);
 }
 
 function actionStyle(action: string | null) {
@@ -140,7 +135,7 @@ export default function VesselCompare({ vessels, onRemove, onClear }: VesselComp
                       key={i}
                       className="text-[9px] text-slate-400 bg-[#0d1320] px-1.5 py-0.5 rounded border border-[#1a2235]"
                     >
-                      {signal.anomaly_type.replace(/_/g, " ")}
+                      {({"ais_gap":"AIS dark period","kinematic_implausibility":"position spoofing","geofence_breach":"restricted zone breach","type_mismatch":"identity mismatch","collision_risk":"COLREGS non-compliance","loitering":"loitering","speed_anomaly":"speed anomaly","heading_anomaly":"course anomaly","route_deviation":"route deviation","zone_lingering":"zone lingering","statistical_outlier":"regional outlier","dark_ship_optical":"dark ship (optical)"} as Record<string,string>)[signal.anomaly_type] ?? signal.anomaly_type.replace(/_/g, " ")}
                     </span>
                   ))}
                 </div>

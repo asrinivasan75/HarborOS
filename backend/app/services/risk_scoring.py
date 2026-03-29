@@ -1,168 +1,164 @@
 """
-Composite risk scoring engine.
+Maritime Domain Awareness risk scoring engine.
 
-Combines anomaly signals, vessel metadata quality, proximity factors,
-and inspection history into a 0-100 risk score with explanation.
+Prioritizes defense-relevant signals: AIS dark periods, GPS spoofing,
+identity deception, restricted zone violations, and route anomalies.
 
-Vessel-type-aware: explanations include type context so operators
-understand why a fishing boat has lower severity for loitering.
+Action recommendations aligned with ISPS Code MARSEC levels:
+  IGNORE    → Below MARSEC 1 (normal traffic)
+  MONITOR   → MARSEC 1 (elevated awareness)
+  VERIFY    → MARSEC 2 (heightened, dispatch verification)
+  ESCALATE  → MARSEC 3 (exceptional, immediate response)
 """
 
 from __future__ import annotations
-from typing import Optional
+import math
 
 from app.models.domain import (
     VesselORM, AnomalySignalSchema, ActionRecommendation,
     RiskAssessmentSchema, AnomalyType
 )
 from app.services.vessel_profiles import get_profile
+from app.services.fuzzy_risk import fuzzy_risk_score
 
 
-# ── Configurable Weights ───────────────────────────────
+# ── Signal Aggregation (pre-fuzzification) ────────────
 
+# Weights prioritized for Maritime Domain Awareness & Interdiction.
+# Defense-relevant signals (dark activity, spoofing, deception) rank highest.
+# Safety-only signals (close approach with COLREGS compliance) rank lowest.
 SIGNAL_WEIGHTS: dict[str, float] = {
-    AnomalyType.GEOFENCE_BREACH: 25,
-    AnomalyType.LOITERING: 20,
-    AnomalyType.SPEED_ANOMALY: 18,
-    AnomalyType.HEADING_ANOMALY: 15,
-    AnomalyType.AIS_GAP: 20,
-    AnomalyType.ZONE_LINGERING: 18,
-    AnomalyType.ROUTE_DEVIATION: 20,             # Off learned corridor — strong contextual signal
-    AnomalyType.TYPE_MISMATCH: 16,               # Behavior contradicts declared type
-    AnomalyType.COLLISION_RISK: 28,              # Highest weight — immediate safety concern
-    AnomalyType.KINEMATIC_IMPLAUSIBILITY: 22,    # Strong indicator of spoofing or bad data
-    AnomalyType.STATISTICAL_OUTLIER: 14,         # Contextual — less definitive alone
+    AnomalyType.DARK_SHIP_OPTICAL: 1.0,           # SeaPod optical detection — no AIS at all
+    AnomalyType.AIS_GAP: 1.0,                   # Vessels going dark — core MDA signal
+    AnomalyType.KINEMATIC_IMPLAUSIBILITY: 0.95,  # GPS spoofing indicator
+    AnomalyType.GEOFENCE_BREACH: 0.90,           # Restricted zone violation — interdiction trigger
+    AnomalyType.TYPE_MISMATCH: 0.85,             # Identity deception (smuggling, disguise)
+    AnomalyType.ROUTE_DEVIATION: 0.80,           # Off-corridor — sanctions evasion, smuggling
+    AnomalyType.LOITERING: 0.75,                 # Surveillance, rendezvous, drop-off
+    AnomalyType.ZONE_LINGERING: 0.70,            # Critical infrastructure proximity
+    AnomalyType.SPEED_ANOMALY: 0.60,             # Evasive maneuvering
+    AnomalyType.HEADING_ANOMALY: 0.55,           # Search patterns, evasion
+    AnomalyType.STATISTICAL_OUTLIER: 0.50,       # Behavioral anomaly vs fleet
+    AnomalyType.COLLISION_RISK: 0.40,            # COLREGS non-compliance (defense reframe)
 }
 
-METADATA_QUALITY_WEIGHT = 15   # Points deducted for poor metadata
-INSPECTION_WEIGHT = 12         # Points from inspection history
-
-# Operator-tunable sensitivity factor (Wang 2020 "rare behaviour factor")
-# 1.0 = default sensitivity
-# >1.0 = more aggressive (flags more contacts)
-# <1.0 = less aggressive (flags fewer contacts)
-SENSITIVITY_FACTOR = 1.0
+DIVERSITY_BONUS_2 = 1.08   # 2 distinct signal types → 8% boost
+DIVERSITY_BONUS_3 = 1.18   # 3+ distinct types → 18% boost
 
 
-# ── Scoring Functions ──────────────────────────────────
+def aggregate_anomaly_severity(signals: list[AnomalySignalSchema]) -> tuple[float, dict]:
+    """Aggregate anomaly signals into a single 0-1 severity for fuzzy input.
 
-def score_anomaly_signals(signals: list[AnomalySignalSchema], sensitivity: float = SENSITIVITY_FACTOR) -> tuple[float, dict]:
-    """Score from anomaly signals, scaled by operator sensitivity factor.
-
-    Key design: multiple signals of the SAME type don't stack linearly.
-    We take the highest severity per type, then add a small bonus for
-    additional signals of that type (diminishing returns). This prevents
-    "5 collision risks = auto-escalate" in dense waterways.
+    Per-type weighting with diminishing returns for repeat signals of the
+    same type, plus diversity bonus for multiple distinct signal types.
     """
-    # Group signals by type, keep highest severity per type
+    if not signals:
+        return 0.0, {}
+
     by_type: dict[str, list[float]] = {}
-    for signal in signals:
-        by_type.setdefault(signal.anomaly_type, []).append(signal.severity)
+    for s in signals:
+        by_type.setdefault(s.anomaly_type, []).append(s.severity)
 
     total = 0.0
     breakdown = {}
-    distinct_types = 0
 
     for anomaly_type, severities in by_type.items():
-        weight = SIGNAL_WEIGHTS.get(anomaly_type, 10)
-        max_severity = max(severities)
-        # Primary contribution from the worst signal of this type
-        contribution = weight * max_severity * sensitivity
-        # Small bonus for additional signals (capped, diminishing)
-        extra_count = len(severities) - 1
-        if extra_count > 0:
-            contribution += min(extra_count, 2) * 2  # +2 per extra, max +4
+        weight = SIGNAL_WEIGHTS.get(anomaly_type, 0.5)
+        max_sev = max(severities)
+        contribution = weight * max_sev
+        extra = min(len(severities) - 1, 2)
+        if extra > 0:
+            contribution += extra * 0.03
         total += contribution
-        breakdown[anomaly_type] = round(contribution, 1)
-        distinct_types += 1
+        breakdown[anomaly_type] = round(contribution, 3)
 
-    # Diversity bonus: multiple DIFFERENT anomaly types compound risk
-    if distinct_types >= 3:
-        total *= 1.15  # 15% boost for 3+ different signal types
-    elif distinct_types >= 2:
-        total *= 1.05  # 5% boost for 2 different types
+    distinct = len(by_type)
+    if distinct >= 3:
+        total *= DIVERSITY_BONUS_3
+    elif distinct >= 2:
+        total *= DIVERSITY_BONUS_2
 
-    return min(total, 85), breakdown  # Cap anomaly contribution at 85
-
-
-def score_metadata_quality(vessel: VesselORM) -> tuple[float, str]:
-    """Score based on vessel metadata completeness. Missing info = suspicious."""
-    missing = 0
-    fields = [vessel.name, vessel.imo, vessel.callsign, vessel.destination, vessel.flag_state]
-    for f in fields:
-        if not f or f.strip() == "" or f.upper() == "UNKNOWN":
-            missing += 1
-
-    if missing == 0:
-        return 0, "Complete vessel metadata"
-    score = (missing / len(fields)) * METADATA_QUALITY_WEIGHT
-    return score, f"Incomplete vessel metadata ({missing} missing fields)"
+    # Normalize to 0-1: divisor calibrated so escalate requires multiple
+    # strong defense-relevant signals converging
+    composite = min(1.0, total / 2.5)
+    return composite, breakdown
 
 
-def score_inspection_history(vessel: VesselORM) -> tuple[float, str]:
-    """Score based on inspection deficiencies."""
+def compute_metadata_deficiency(vessel: VesselORM) -> float:
+    """Metadata deficiency as weighted 0-1 value for fuzzy input.
+
+    Fields weighted by maritime security importance (ISPS/SOLAS):
+    IMO number and flag state are critical identifiers; missing destination
+    is common for local traffic and weighted lower.
+    """
+    checks = [
+        (vessel.imo, 0.30),
+        (vessel.flag_state, 0.25),
+        (vessel.callsign, 0.20),
+        (vessel.name, 0.15),
+        (vessel.destination, 0.10),
+    ]
+    return sum(
+        weight for value, weight in checks
+        if not value or value.strip() == "" or value.upper() == "UNKNOWN"
+    )
+
+
+def compute_inspection_risk(vessel: VesselORM) -> float:
+    """Inspection risk as 0-1 normalized value for fuzzy input."""
     deficiencies = vessel.inspection_deficiencies or 0
-    if deficiencies == 0:
-        return 0, "Clean inspection record"
-    score = min(INSPECTION_WEIGHT, deficiencies * 3)
-    return score, f"{deficiencies} inspection deficiencies on record"
+    return min(1.0, deficiencies / 5)
 
 
-def determine_action(score: float) -> str:
-    """Map risk score to recommended action."""
-    if score >= 65:
-        return ActionRecommendation.ESCALATE
-    elif score >= 35:
-        return ActionRecommendation.VERIFY
-    elif score >= 15:
-        return ActionRecommendation.MONITOR
-    return ActionRecommendation.IGNORE
+_SIGNAL_LABELS = {
+    AnomalyType.AIS_GAP: "AIS dark period",
+    AnomalyType.KINEMATIC_IMPLAUSIBILITY: "position spoofing indicators",
+    AnomalyType.GEOFENCE_BREACH: "restricted zone breach",
+    AnomalyType.TYPE_MISMATCH: "identity mismatch",
+    AnomalyType.ROUTE_DEVIATION: "route deviation",
+    AnomalyType.LOITERING: "loitering behavior",
+    AnomalyType.ZONE_LINGERING: "zone lingering",
+    AnomalyType.SPEED_ANOMALY: "speed anomaly",
+    AnomalyType.HEADING_ANOMALY: "course anomaly",
+    AnomalyType.STATISTICAL_OUTLIER: "regional behavioral outlier",
+    AnomalyType.COLLISION_RISK: "COLREGS non-compliance",
+}
+
+MARSEC_DESCRIPTIONS = {
+    "ignore": "Below MARSEC 1 — normal traffic, no action needed.",
+    "monitor": "MARSEC 1 — elevated awareness. Track vessel and log activity.",
+    "verify": "MARSEC 2 — dispatch verification asset (camera, drone, or patrol) to confirm identity and intent.",
+    "escalate": "MARSEC 3 — immediate interdiction response. Consider area restriction and asset deployment.",
+}
 
 
 def generate_explanation(
     vessel: VesselORM,
     signals: list[AnomalySignalSchema],
-    metadata_note: str,
-    inspection_note: str,
     score: float,
     action: str,
+    fuzzy_debug: dict,
 ) -> str:
-    """Generate human-readable explanation of the risk assessment.
+    """Concise explanation — signal details are shown separately in UI cards."""
+    if not signals:
+        return "No significant anomalies detected."
 
-    Includes vessel type context so operators understand severity adjustments.
-    """
-    parts = []
+    vtype = (vessel.vessel_type or "unknown").replace("_", " ")
+    sorted_signals = sorted(signals, key=lambda s: s.severity, reverse=True)
+    top_labels = []
+    for s in sorted_signals[:3]:
+        label = _SIGNAL_LABELS.get(s.anomaly_type, s.anomaly_type.replace("_", " "))
+        top_labels.append(label)
 
-    profile = get_profile(vessel.vessel_type)
-    vtype = vessel.vessel_type or "unknown"
+    summary = f"{len(signals)} anomaly signal{'s' if len(signals) != 1 else ''} detected on {vtype} vessel"
+    if vessel.name:
+        summary += f" {vessel.name}"
+    summary += f": {', '.join(top_labels)}"
+    if len(signals) > 3:
+        summary += f", and {len(signals) - 3} more"
+    summary += f". {MARSEC_DESCRIPTIONS.get(action, '')}"
 
-    # Vessel type context header
-    has_adjusted = any(
-        s.details and s.details.get("severity_mult") and s.details["severity_mult"] != 1.0
-        for s in signals
-    )
-    if has_adjusted:
-        parts.append(f"[{vtype} profile applied — thresholds adjusted for vessel type.]")
-
-    if signals:
-        signal_descriptions = [s.description for s in sorted(signals, key=lambda s: s.severity, reverse=True)]
-        parts.append("Anomaly signals detected: " + "; ".join(signal_descriptions) + ".")
-
-    # Flag learned-baseline signals
-    learned_signals = [s for s in signals if s.details and s.details.get("source") == "learned_baseline"]
-    if learned_signals:
-        parts.append(f"({len(learned_signals)} signal(s) from historical pattern analysis.)")
-
-    if "missing" in metadata_note.lower() or "incomplete" in metadata_note.lower():
-        parts.append(metadata_note + ".")
-
-    if "deficiencies" in inspection_note.lower():
-        parts.append(inspection_note + ".")
-
-    if not parts:
-        parts.append("No significant anomalies detected.")
-
-    return " ".join(parts)
+    return summary
 
 
 # ── Main Scoring Entry Point ──────────────────────────
@@ -171,27 +167,36 @@ def compute_risk_assessment(
     vessel: VesselORM,
     signals: list[AnomalySignalSchema],
 ) -> RiskAssessmentSchema:
-    """Compute full risk assessment for a vessel."""
-    anomaly_score, anomaly_breakdown = score_anomaly_signals(signals)
-    metadata_score, metadata_note = score_metadata_quality(vessel)
-    inspection_score, inspection_note = score_inspection_history(vessel)
+    """Compute risk assessment using fuzzy inference.
 
-    total_score = min(100, anomaly_score + metadata_score + inspection_score)
-    action = determine_action(total_score)
+    Pipeline:
+    1. Aggregate anomaly signals → composite severity (0-1)
+    2. Compute metadata deficiency (0-1)
+    3. Compute inspection risk (0-1)
+    4. Fuzzy inference → risk score (0-100) + MARSEC action
+    """
+    anomaly_severity, anomaly_breakdown = aggregate_anomaly_severity(signals)
+    metadata_deficiency = compute_metadata_deficiency(vessel)
+    inspection_risk = compute_inspection_risk(vessel)
+
+    score, action, fuzzy_debug = fuzzy_risk_score(
+        anomaly_severity, metadata_deficiency, inspection_risk
+    )
 
     explanation = generate_explanation(
-        vessel, signals, metadata_note, inspection_note, total_score, action
+        vessel, signals, score, action, fuzzy_debug
     )
 
     breakdown = {
         **anomaly_breakdown,
-        "metadata_quality": round(metadata_score, 1),
-        "inspection_history": round(inspection_score, 1),
+        "metadata_deficiency": round(metadata_deficiency, 3),
+        "inspection_risk": round(inspection_risk, 3),
+        "fuzzy_score": score,
     }
 
     return RiskAssessmentSchema(
         vessel_id=vessel.id,
-        risk_score=round(total_score, 1),
+        risk_score=score,
         recommended_action=action,
         explanation=explanation,
         signals=signals,

@@ -147,6 +147,21 @@ export interface DetectionMetrics {
   precision: number | null;
 }
 
+export interface TimePositionEntry {
+  vessel_id: string;
+  vessel_name: string | null;
+  vessel_type: string | null;
+  mmsi: string | null;
+  latitude: number;
+  longitude: number;
+  speed_over_ground: number | null;
+  course_over_ground: number | null;
+  heading: number | null;
+  timestamp: string;
+  risk_score: number;
+  recommended_action: string;
+}
+
 // ── API Functions ─────────────────────────────────────
 
 export const api = {
@@ -194,4 +209,6 @@ export const api = {
   getIngestionStatus: () => fetchAPI<IngestionStatus>("/ingestion/status"),
   getVesselReport: (vesselId: string) =>
     fetchAPI<Record<string, unknown>>(`/vessels/${vesselId}/report`),
+  getPositionsAtTime: (timestamp: string) =>
+    fetchAPI<TimePositionEntry[]>(`/vessels/positions/at-time?timestamp=${encodeURIComponent(timestamp)}`),
 };
