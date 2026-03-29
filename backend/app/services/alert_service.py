@@ -86,6 +86,10 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
         if vessel.id.startswith("dark-") or vessel.id.startswith("seapod-"):
             continue
 
+        # Skip demo vessels whose alerts are manually seeded
+        if vessel.id in ("v-jade-star", "v-dark-optical-1"):
+            continue
+
         if not positions:
             # Resolve any ghost alerts for vessels with no position data
             ghost_alert = (
