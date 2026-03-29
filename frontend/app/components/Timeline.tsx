@@ -116,11 +116,7 @@ export default function Timeline({ onTimeChange }: TimelineProps) {
           step="0.5"
           value={position}
           onChange={handleSliderChange}
-          className="w-full h-1 appearance-none bg-[#1a2235] rounded-full cursor-pointer
-            [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
-            [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-400
-            [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#0d1320]
-            [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-blue-500/30"
+          className="timeline-slider"
         />
         {/* Progress fill */}
         <div

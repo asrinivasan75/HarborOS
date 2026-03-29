@@ -7,10 +7,12 @@ interface HeaderProps {
   vesselCount: number;
   isLive: boolean;
   positionsIngested?: number;
+  onToggleAnalytics: () => void;
+  connectionOk?: boolean;
 }
 
 export default function Header({
-  alertCount, vesselCount, isLive, positionsIngested,
+  alertCount, vesselCount, isLive, positionsIngested, onToggleAnalytics, connectionOk = true,
 }: HeaderProps) {
   return (
     <header className="h-14 bg-[#0d1320] border-b border-[#1a2235] flex items-center justify-between px-5 shrink-0">
@@ -42,14 +44,21 @@ export default function Header({
 
         <div className="h-6 w-px bg-[#1a2235] mx-2" />
 
-        <Link
-          href="/analytics"
+        <button
+          onClick={onToggleAnalytics}
           className="text-[10px] text-slate-500 hover:text-blue-400 transition-colors font-medium tracking-wider uppercase px-2 py-1.5 rounded-lg hover:bg-blue-500/10"
         >
           Analytics
-        </Link>
+        </button>
 
         <div className="h-6 w-px bg-[#1a2235] mx-1" />
+
+        {!connectionOk && (
+          <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400" style={{ animation: "subtle-pulse 1s infinite" }} />
+            <span className="text-[10px] font-semibold text-red-400 tracking-wider">OFFLINE</span>
+          </div>
+        )}
 
         {isLive ? (
           <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-1.5">

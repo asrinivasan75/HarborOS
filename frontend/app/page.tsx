@@ -5,13 +5,14 @@ import Header from "@/app/components/Header";
 import AlertFeed from "@/app/components/AlertFeed";
 import MapView from "@/app/components/MapView";
 import VesselDetailPanel from "@/app/components/VesselDetail";
-import VesselCompare from "@/app/components/VesselCompare";
 import DemoMode from "@/app/components/DemoMode";
 import RegionSummary from "@/app/components/RegionSummary";
-import Timeline from "@/app/components/Timeline";
+import RiskDistributionPanel from "@/app/components/RiskDistribution";
+import Toast from "@/app/components/Toast";
+import type { ToastItem } from "@/app/components/Toast";
 import type { SatelliteFootprint } from "@/app/components/MapView";
 import { api } from "@/app/lib/api";
-import type { Vessel, VesselDetail, Alert, Geofence, IngestionStatus, Region, TimePositionEntry } from "@/app/lib/api";
+import type { Vessel, VesselDetail, Alert, Geofence, IngestionStatus, Region, RiskDistribution } from "@/app/lib/api";
 
 const REFRESH_INTERVAL_MS = 5000;
 
@@ -30,10 +31,26 @@ export default function Dashboard() {
   const [ingestionStatus, setIngestionStatus] = useState<IngestionStatus | null>(null);
   const [mapTarget, setMapTarget] = useState<{ center: [number, number]; zoom: number; _t?: number } | null>(null);
   const [satelliteFootprint, setSatelliteFootprint] = useState<SatelliteFootprint | null>(null);
-  const [comparedVessels, setComparedVessels] = useState<VesselDetail[]>([]);
-  const [timeFilter, setTimeFilter] = useState<string | null>(null);
+  const [alertStatusFilter, setAlertStatusFilter] = useState<string>("active");
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState<RiskDistribution | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [detailClosing, setDetailClosing] = useState(false);
+  const [analyticsClosing, setAnalyticsClosing] = useState(false);
+  const [connectionOk, setConnectionOk] = useState(true);
   const liveVesselsRef = useRef<Vessel[]>([]);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analyticsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((message: string, type: ToastItem["type"] = "info") => {
+    const id = `${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev.slice(-4), { id, message, type }]);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   // Load initial data
   useEffect(() => {
@@ -41,7 +58,7 @@ export default function Dashboard() {
       try {
         const [v, a, g, r] = await Promise.all([
           api.getVessels(),
-          api.getAlerts("active"),
+          api.getAlerts(alertStatusFilter || undefined),
           api.getGeofences(),
           api.getRegions(),
         ]);
@@ -70,12 +87,11 @@ export default function Dashboard() {
     if (refreshTimer.current) clearInterval(refreshTimer.current);
 
     refreshTimer.current = setInterval(async () => {
-      if (timeFilter) return; // Pause live refresh during replay
       try {
         const regionParam = activeRegion || undefined;
         const [v, a, status] = await Promise.all([
           api.getVessels(regionParam),
-          api.getAlerts("active", regionParam, alertsLimitRef.current),
+          api.getAlerts(alertStatusFilter || undefined, regionParam, alertsLimitRef.current),
           api.getIngestionStatus().catch(() => null),
         ]);
         setVessels(v.items);
@@ -83,11 +99,15 @@ export default function Dashboard() {
         setAlerts(a.items);
         setAlertsTotal(a.total);
         if (status) setIngestionStatus(status);
-      } catch {}
+        setConnectionOk(true);
+      } catch {
+        if (connectionOk) showToast("Connection lost — retrying...", "error");
+        setConnectionOk(false);
+      }
     }, REFRESH_INTERVAL_MS);
 
     return () => { if (refreshTimer.current) clearInterval(refreshTimer.current); };
-  }, [activeRegion]);
+  }, [activeRegion, alertStatusFilter]);
 
   // Region change handler
   const handleRegionChange = useCallback(async (regionKey: string | null) => {
@@ -110,7 +130,7 @@ export default function Dashboard() {
       const regionParam = regionKey || undefined;
       const [v, a] = await Promise.all([
         api.getVessels(regionParam),
-        api.getAlerts("active", regionParam),
+        api.getAlerts(alertStatusFilter || undefined, regionParam),
       ]);
       setVessels(v.items);
       setAlerts(a.items);
@@ -119,7 +139,11 @@ export default function Dashboard() {
   }, [regions]);
 
   const handleSelectVessel = useCallback(async (vesselId: string) => {
-    setSatelliteFootprint(null); // Clear previous footprint
+    // Cancel any pending close animation
+    if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; setDetailClosing(false); }
+    // Close analytics if open
+    if (showAnalytics) { setShowAnalytics(false); setAnalyticsClosing(false); }
+    setSatelliteFootprint(null);
     try {
       const detail = await api.getVesselDetail(vesselId);
       setSelectedVessel(detail);
@@ -167,7 +191,7 @@ export default function Dashboard() {
     try {
       const regionParam = activeRegion || undefined;
       const newLimit = alerts.length + 50;
-      const a = await api.getAlerts("active", regionParam, newLimit);
+      const a = await api.getAlerts(alertStatusFilter || undefined, regionParam, newLimit);
       alertsLimitRef.current = newLimit;
       setAlerts(a.items);
       setAlertsTotal(a.total);
@@ -175,94 +199,89 @@ export default function Dashboard() {
   }, [activeRegion, alerts.length]);
 
   const handleCloseDetail = useCallback(() => {
-    setSelectedVessel(null);
-    setSelectedAlertId(null);
-    setSatelliteFootprint(null);
-  }, []);
-
-  const handleAlertAction = useCallback(async (alertId: string, newStatus: string) => {
-    // Update the alert in-place so the feed reflects the change immediately
-    setAlerts((prev) =>
-      prev.map((a) => a.id === alertId ? { ...a, status: newStatus } : a)
-    );
-    // If dismissed, close the detail panel
-    if (newStatus === "dismissed") {
+    setDetailClosing(true);
+    closeTimerRef.current = setTimeout(() => {
       setSelectedVessel(null);
       setSelectedAlertId(null);
       setSatelliteFootprint(null);
-    }
+      setDetailClosing(false);
+      closeTimerRef.current = null;
+    }, 200);
   }, []);
 
-  const handleCompareVessel = useCallback(async (alert: Alert) => {
-    try {
-      const detail = await api.getVesselDetail(alert.vessel_id);
-      setComparedVessels((prev) => {
-        if (prev.length >= 3) return prev;
-        if (prev.some((v) => v.id === detail.id)) return prev;
-        return [...prev, detail];
-      });
-    } catch (e) {
-      console.error("Failed to load vessel for comparison:", e);
+  const handleAlertAction = useCallback(async (alertId: string, newStatus: string) => {
+    setAlerts((prev) =>
+      prev.map((a) => a.id === alertId ? { ...a, status: newStatus } : a)
+    );
+    showToast(
+      newStatus === "dismissed" ? "Alert dismissed" : newStatus === "acknowledged" ? "Alert acknowledged" : `Alert ${newStatus}`,
+      "success"
+    );
+    if (newStatus === "dismissed") {
+      handleCloseDetail();
     }
-  }, []);
+  }, [showToast, handleCloseDetail]);
 
-  const handleRemoveCompareVessel = useCallback((vesselId: string) => {
-    setComparedVessels((prev) => prev.filter((v) => v.id !== vesselId));
-  }, []);
 
-  const handleClearCompare = useCallback(() => {
-    setComparedVessels([]);
-  }, []);
 
-  const handleTimeChange = useCallback(async (timestamp: string | null) => {
-    setTimeFilter(timestamp);
-    if (!timestamp) {
-      // Back to live — restore live vessel data
-      setVessels(liveVesselsRef.current);
-      return;
+  const handleToggleAnalytics = useCallback(() => {
+    if (showAnalytics) {
+      setAnalyticsClosing(true);
+      analyticsCloseTimerRef.current = setTimeout(() => {
+        setShowAnalytics(false);
+        setAnalyticsClosing(false);
+        analyticsCloseTimerRef.current = null;
+      }, 200);
+    } else {
+      if (analyticsCloseTimerRef.current) { clearTimeout(analyticsCloseTimerRef.current); analyticsCloseTimerRef.current = null; setAnalyticsClosing(false); }
+      // Close vessel detail panel if open
+      if (selectedVessel) handleCloseDetail();
+      setShowAnalytics(true);
+      api.getRiskDistribution().then(setAnalyticsData).catch(() => {});
     }
-    try {
-      const positions = await api.getPositionsAtTime(timestamp);
-      // Map time positions back to Vessel shape for the map
-      const replayVessels: Vessel[] = positions.map((p: TimePositionEntry) => ({
-        id: p.vessel_id,
-        mmsi: p.mmsi ?? "",
-        name: p.vessel_name ?? "",
-        vessel_type: p.vessel_type ?? "other",
-        flag_state: "",
-        length: null,
-        beam: null,
-        draft: null,
-        imo: null,
-        callsign: null,
-        destination: null,
-        latest_position: {
-          timestamp: p.timestamp,
-          latitude: p.latitude,
-          longitude: p.longitude,
-          speed_over_ground: p.speed_over_ground,
-          course_over_ground: p.course_over_ground,
-          heading: p.heading,
-        },
-        risk_score: p.risk_score,
-        recommended_action: p.recommended_action,
-      }));
-      setVessels(replayVessels);
-    } catch {
-      // If replay fetch fails, stay on current data
-    }
-  }, []);
+  }, [showAnalytics, selectedVessel, handleCloseDetail]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "Escape") {
+        if (selectedVessel) handleCloseDetail();
+        else if (showAnalytics) handleToggleAnalytics();
+      }
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
+        showToast("Shortcuts: Esc = close panel · A = analytics · ? = help", "info");
+      }
+      if (e.key === "a" && !e.ctrlKey && !e.metaKey) {
+        handleToggleAnalytics();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedVessel, showAnalytics, handleCloseDetail, handleToggleAnalytics, showToast]);
 
   if (loading) {
     return (
       <div className="h-screen flex flex-col bg-[#070a12]">
-        <Header alertCount={0} vesselCount={0} isLive={false} />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-10 h-10 border-2 border-blue-500/30 border-t-blue-400 rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-xs text-slate-500 tracking-wider uppercase">Initializing HarborOS</p>
+        <Header alertCount={0} vesselCount={0} isLive={false} onToggleAnalytics={() => {}} connectionOk={true} />
+        <div className="flex-shrink-0 px-3 py-2 flex gap-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="skeleton w-[120px] h-[52px] shrink-0" />
+          ))}
+        </div>
+        <div className="flex-1 flex overflow-hidden">
+          <div className="w-80 bg-[#0d1320] border-r border-[#1a2235] p-3 space-y-2">
+            <div className="skeleton h-8 w-full mb-3" />
+            <div className="skeleton h-7 w-full" />
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="skeleton h-[84px] w-full" />
+            ))}
+          </div>
+          <div className="flex-1 relative">
+            <div className="absolute inset-0 skeleton" style={{ borderRadius: 0 }} />
           </div>
         </div>
+        <div className="skeleton h-10 w-full" style={{ borderRadius: 0 }} />
       </div>
     );
   }
@@ -270,7 +289,7 @@ export default function Dashboard() {
   if (error) {
     return (
       <div className="h-screen flex flex-col bg-[#070a12]">
-        <Header alertCount={0} vesselCount={0} isLive={false} />
+        <Header alertCount={0} vesselCount={0} isLive={false} onToggleAnalytics={handleToggleAnalytics} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-sm">
             <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-5">
@@ -297,6 +316,8 @@ export default function Dashboard() {
         vesselCount={vessels.length}
         isLive={!!isLive}
         positionsIngested={ingestionStatus?.positions_ingested}
+        onToggleAnalytics={handleToggleAnalytics}
+        connectionOk={connectionOk}
       />
       <RegionSummary
         regions={regions}
@@ -310,7 +331,16 @@ export default function Dashboard() {
           selectedAlertId={selectedAlertId}
           onSelectAlert={handleSelectAlert}
           onLoadMore={handleLoadMoreAlerts}
-          onCompare={handleCompareVessel}
+          statusFilter={alertStatusFilter}
+          onStatusFilterChange={(f: string) => {
+            setAlertStatusFilter(f);
+            // Immediately refetch with new filter
+            const regionParam = activeRegion || undefined;
+            api.getAlerts(f || undefined, regionParam, alertsLimitRef.current).then((a) => {
+              setAlerts(a.items);
+              setAlertsTotal(a.total);
+            }).catch(() => {});
+          }}
         />
         <div className="flex-1 relative">
           <MapView
@@ -327,25 +357,26 @@ export default function Dashboard() {
             onSelectRegion={handleRegionChange}
             darkHorizonId="v-dark-horizon"
           />
+          {(showAnalytics || analyticsClosing) && (
+            <RiskDistributionPanel
+              data={analyticsData}
+              onClose={handleToggleAnalytics}
+              closing={analyticsClosing}
+            />
+          )}
         </div>
-        {selectedVessel && (
+        {(selectedVessel || detailClosing) && (
           <VesselDetailPanel
-            vessel={selectedVessel}
+            vessel={selectedVessel!}
             alertId={selectedAlertId}
             onSatelliteFootprint={setSatelliteFootprint}
             onClose={handleCloseDetail}
             onAlertAction={handleAlertAction}
+            closing={detailClosing}
           />
         )}
       </div>
-      <Timeline onTimeChange={handleTimeChange} />
-      {comparedVessels.length > 0 && (
-        <VesselCompare
-          vessels={comparedVessels}
-          onRemove={handleRemoveCompareVessel}
-          onClear={handleClearCompare}
-        />
-      )}
+      <Toast toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

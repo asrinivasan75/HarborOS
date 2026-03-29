@@ -96,19 +96,17 @@ export default function RegionSummary({ regions, activeRegion, onSelectRegion }:
   if (regionKeys.length === 0) return null;
 
   return (
-    <div className="flex-shrink-0 px-3 py-2 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700">
-      <div className="flex gap-2">
-        {/* Global view button */}
+    <div className="flex-shrink-0 px-2 py-1.5 overflow-x-auto scroll-thin">
+      <div className="flex gap-1.5">
         <button
           onClick={() => onSelectRegion(null)}
           className={`
-            flex-shrink-0 w-[90px] px-3 py-2 rounded-lg border text-left transition-all
+            flex-shrink-0 px-2.5 py-1.5 rounded border text-left transition-all
             bg-[#111827] hover:bg-[#151d2e]
             ${activeRegion === null ? "border-blue-500/30" : "border-[#1a2235]"}
           `}
         >
-          <div className="text-[11px] font-medium text-slate-200 mb-1">Global</div>
-          <div className="text-[10px] text-slate-400">All regions</div>
+          <div className="text-[10px] font-medium text-slate-200">Global</div>
         </button>
         {regionKeys.map((key) => {
           const region = regions[key];
@@ -121,30 +119,23 @@ export default function RegionSummary({ regions, activeRegion, onSelectRegion }:
               key={key}
               onClick={() => onSelectRegion(key)}
               className={`
-                flex-shrink-0 w-[120px] px-3 py-2 rounded-lg border text-left transition-all
+                flex-shrink-0 px-2.5 py-1.5 rounded border text-left transition-all
                 bg-[#111827] hover:bg-[#151d2e]
                 ${isActive ? "border-blue-500/30" : "border-[#1a2235]"}
               `}
             >
-              <div className="text-[11px] font-medium text-slate-200 truncate mb-1">
-                {label}
-              </div>
-              <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                <span>{stat?.vesselCount ?? "..."} vessels</span>
-                {stat && stat.escalationCount > 0 ? (
-                  <span className="inline-flex items-center justify-center min-w-[16px] h-[14px] px-1 rounded-full bg-red-500/20 text-red-400 text-[9px] font-semibold">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-medium text-slate-200 truncate max-w-[80px]">
+                  {label}
+                </span>
+                {stat && stat.escalationCount > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[14px] h-[12px] px-0.5 rounded-full bg-red-500/20 text-red-400 text-[8px] font-semibold">
                     {stat.escalationCount}
                   </span>
-                ) : (
-                  <span className="text-slate-600">{stat ? "0" : "..."}</span>
                 )}
               </div>
-              {/* Alert density bar */}
-              <div className="mt-1.5 h-[3px] w-full rounded-full bg-slate-800 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${densityColor(stat?.alertDensity ?? 0)}`}
-                  style={{ width: `${Math.min((stat?.alertDensity ?? 0) * 100, 100)}%` }}
-                />
+              <div className="text-[9px] text-slate-500 mt-0.5">
+                {stat?.vesselCount ?? "..."} vessels
               </div>
             </button>
           );

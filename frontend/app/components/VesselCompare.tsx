@@ -46,7 +46,7 @@ export default function VesselCompare({ vessels, onRemove, onClear }: VesselComp
   if (vessels.length === 0) return null;
 
   return (
-    <div className="bg-[#0d1320]/95 backdrop-blur-md border-t border-[#1a2235] px-4 py-3" style={{ height: "200px" }}>
+    <div className="bg-[#0d1320]/95 backdrop-blur-md border-t border-[#1a2235] px-4 py-3" style={{ minHeight: "140px", maxHeight: "240px" }}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-blue-400">
@@ -64,13 +64,13 @@ export default function VesselCompare({ vessels, onRemove, onClear }: VesselComp
         </div>
         <button
           onClick={onClear}
-          className="text-[10px] font-medium text-slate-400 hover:text-slate-200 bg-[#111827] hover:bg-[#1a2235] px-3 py-1 rounded-md border border-[#1a2235] hover:border-slate-600 transition-all"
+          className="text-[10px] font-medium text-slate-400 hover:text-slate-200 bg-[#111827] hover:bg-[#1a2235] px-3 py-1.5 rounded-md border border-[#1a2235] hover:border-slate-600 transition-all"
         >
           Clear All
         </button>
       </div>
 
-      <div className="flex gap-3 h-[calc(100%-36px)]">
+      <div className="flex gap-3 flex-1 min-h-0">
         {vessels.map((vessel) => {
           const speed = vessel.latest_position?.speed_over_ground;
           const heading = vessel.latest_position?.heading ?? vessel.latest_position?.course_over_ground;

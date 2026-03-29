@@ -10,7 +10,8 @@ interface AlertFeedProps {
   selectedAlertId: string | null;
   onSelectAlert: (alert: Alert) => void;
   onLoadMore: () => void;
-  onCompare?: (alert: Alert) => void;
+  statusFilter: string;
+  onStatusFilterChange: (filter: string) => void;
 }
 
 type SortKey = "risk" | "name" | "time";
@@ -72,7 +73,7 @@ function sortAlerts(alerts: Alert[], key: SortKey, ascending: boolean): Alert[] 
   });
 }
 
-export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSelectAlert, onLoadMore, onCompare }: AlertFeedProps) {
+export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSelectAlert, onLoadMore, statusFilter, onStatusFilterChange }: AlertFeedProps) {
   const hasMore = alerts.length < alertsTotal;
   const [sortKey, setSortKey] = useState<SortKey>("risk");
   const [ascending, setAscending] = useState(false);
@@ -94,24 +95,20 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
   }, [alerts, sortKey, ascending, search]);
 
   return (
-    <div className="w-80 bg-[#0d1320] border-r border-[#1a2235] flex flex-col shrink-0">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-[#1a2235] flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-blue-400" style={{ animation: "subtle-pulse 3s infinite" }} />
-          <h2 className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
-            Alerts
-          </h2>
+    <div className="w-72 bg-[#0d1320] border-r border-[#1a2235] flex flex-col shrink-0">
+      {/* Header + Search */}
+      <div className="px-3 py-2 border-b border-[#1a2235]">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-400" style={{ animation: "subtle-pulse 3s infinite" }} />
+            <h2 className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider">Alerts</h2>
+          </div>
+          <span className="text-[9px] font-mono text-slate-500">
+            {filtered.length}/{alertsTotal}
+          </span>
         </div>
-        <span className="text-[10px] font-mono text-slate-500 bg-[#111827] px-2 py-0.5 rounded-md">
-          {filtered.length}<span className="text-slate-600">/</span>{alertsTotal}
-        </span>
-      </div>
-
-      {/* Search */}
-      <div className="px-3 pt-2.5 pb-1.5">
         <div className="relative">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-600">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-600">
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.3-4.3" />
           </svg>
@@ -119,14 +116,35 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search vessels, MMSI, type..."
-            className="w-full bg-[#111827] border border-[#1a2235] rounded-lg text-[11px] text-slate-300 placeholder-slate-600 pl-8 pr-3 py-1.5 focus:outline-none focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/15 transition-colors"
+            placeholder="Search..."
+            className="w-full bg-[#111827] border border-[#1a2235] rounded text-[10px] text-slate-300 placeholder-slate-600 pl-7 pr-2 py-1 focus:outline-none focus:border-blue-500/40 transition-colors"
           />
         </div>
       </div>
 
-      {/* Sort buttons */}
-      <div className="px-3 pb-2.5 flex gap-1 justify-evenly">
+      {/* Filters + Sort — single row */}
+      <div className="px-3 py-1.5 flex gap-1 border-b border-[#1a2235]">
+        <button
+          onClick={() => onStatusFilterChange("active")}
+          className={`text-[9px] font-semibold uppercase px-2 py-1 rounded transition-all ${
+            statusFilter === "active"
+              ? "bg-red-500/15 text-red-400"
+              : "text-slate-500 hover:text-slate-400"
+          }`}
+        >
+          Active
+        </button>
+        <button
+          onClick={() => onStatusFilterChange("")}
+          className={`text-[9px] font-semibold uppercase px-2 py-1 rounded transition-all ${
+            statusFilter === ""
+              ? "bg-blue-500/15 text-blue-400"
+              : "text-slate-500 hover:text-slate-400"
+          }`}
+        >
+          All
+        </button>
+        <div className="flex-1" />
         {(["risk", "name", "time"] as SortKey[]).map((key) => (
           <SortButton
             key={key}
@@ -146,14 +164,9 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
       </div>
 
       {/* Alert list */}
-      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1.5">
+      <div className="flex-1 overflow-y-auto px-1.5 pb-1.5 space-y-1">
         {filtered.length === 0 ? (
-          <div className="p-6 text-xs text-slate-500 text-center">
-            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center mx-auto mb-3">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-600">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-              </svg>
-            </div>
+          <div className="p-4 text-[10px] text-slate-500 text-center">
             {search ? "No matching alerts" : "No active alerts"}
           </div>
         ) : (
@@ -162,54 +175,42 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
             const displayAction = level === "normal" ? "normal" : alert.recommended_action;
             const style = actionStyle(displayAction);
             const isSelected = selectedAlertId === alert.id;
+            const isResolved = alert.status !== "active";
             return (
               <button
                 key={alert.id}
                 onClick={() => onSelectAlert(alert)}
-                className={`w-full text-left rounded-lg p-3 transition-all ${
+                className={`w-full text-left rounded-md px-2.5 py-2 transition-all ${
                   isSelected
-                    ? "bg-blue-500/10 border border-blue-500/30 shadow-lg shadow-blue-500/5"
-                    : "bg-[#111827]/60 border border-transparent hover:bg-[#111827] hover:border-[#1a2235]"
+                    ? "bg-blue-500/10 border border-blue-500/30"
+                    : isResolved
+                    ? "bg-[#111827]/30 border border-transparent opacity-50 hover:opacity-70"
+                    : "bg-[#111827]/60 border border-transparent hover:bg-[#111827] active:scale-[0.98]"
                 }`}
               >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex-1 min-w-0 pr-3">
-                    <span className="text-[13px] font-medium text-slate-200 truncate block">
-                      {alert.vessel_name || "Unknown Vessel"}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      {alert.vessel_mmsi}
-                    </span>
-                  </div>
-                  <div className={`text-xl font-bold font-mono leading-none ${riskColor(alert.risk_score)} ${riskGlow(alert.risk_score)} drop-shadow-sm`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-[12px] font-medium truncate ${isResolved ? "text-slate-400" : "text-slate-200"}`}>
+                    {alert.vessel_name || "Unknown Vessel"}
+                  </span>
+                  <div className={`text-lg font-bold font-mono leading-none ml-2 ${isResolved ? "text-slate-500" : riskColor(alert.risk_score)}`}>
                     {Math.round(alert.risk_score)}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className={`inline-flex items-center gap-1 text-[9px] font-semibold uppercase px-2 py-0.5 rounded-md border ${style.bg} ${style.text} ${style.border}`}>
-                    <span className={`w-1 h-1 rounded-full ${style.dot}`} />
-                    {displayAction}
-                  </span>
-                  <span className="text-[10px] text-slate-600">
-                    {timeAgo(alert.created_at)}
-                  </span>
-                </div>
-                <div className="flex items-end justify-between">
-                  <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed flex-1">
-                    {alert.anomaly_signals.map((s) => signalLabel(s.anomaly_type)).join(", ")}
-                  </p>
-                  {onCompare && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); onCompare(alert); }}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onCompare(alert); } }}
-                      className="ml-2 shrink-0 text-[9px] font-semibold uppercase tracking-wide text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 hover:border-blue-500/30 px-2 py-0.5 rounded-md transition-all cursor-pointer"
-                    >
-                      Compare
+                <div className="flex items-center gap-1.5">
+                  {isResolved ? (
+                    <span className="text-[8px] font-semibold uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
+                      {alert.status}
+                    </span>
+                  ) : (
+                    <span className={`text-[8px] font-semibold uppercase px-1.5 py-0.5 rounded ${style.bg} ${style.text}`}>
+                      {displayAction}
                     </span>
                   )}
+                  <span className="text-[9px] text-slate-600">{timeAgo(alert.created_at)}</span>
                 </div>
+                <p className="text-[9px] text-slate-500 line-clamp-1 mt-1">
+                  {alert.anomaly_signals.map((s) => signalLabel(s.anomaly_type)).join(" · ")}
+                </p>
               </button>
             );
           })
@@ -217,9 +218,9 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
         {hasMore && !search && (
           <button
             onClick={onLoadMore}
-            className="w-full py-2.5 text-[11px] font-medium text-blue-400 hover:text-blue-300 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 hover:border-blue-500/20 rounded-lg transition-all"
+            className="w-full py-2 text-[10px] font-medium text-blue-400 hover:text-blue-300 bg-blue-500/5 hover:bg-blue-500/10 rounded transition-all"
           >
-            Load more ({alertsTotal - alerts.length} remaining)
+            Load more ({alertsTotal - alerts.length})
           </button>
         )}
       </div>
@@ -231,15 +232,13 @@ function SortButton({ label, active, ascending, onClick }: { label: string; acti
   return (
     <button
       onClick={onClick}
-      className={`flex-1 text-[9px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-md transition-all inline-flex items-center justify-center gap-1 ${
-        active
-          ? "bg-blue-500/15 text-blue-400 border border-blue-500/25"
-          : "text-slate-500 hover:text-slate-400 border border-transparent hover:bg-[#111827]"
+      className={`text-[8px] font-semibold uppercase px-1.5 py-1 rounded transition-all inline-flex items-center gap-0.5 ${
+        active ? "text-blue-400" : "text-slate-600 hover:text-slate-400"
       }`}
     >
       {label}
       {active && (
-        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="transition-transform" style={{ transform: ascending ? "rotate(180deg)" : undefined }}>
+        <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="transition-transform duration-200" style={{ transform: ascending ? "rotate(180deg)" : undefined }}>
           <path d="M12 5v14M5 12l7 7 7-7" />
         </svg>
       )}

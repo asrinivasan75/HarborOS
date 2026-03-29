@@ -239,7 +239,8 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
       currentVesselIds.add(vessel.id);
 
       const score = vessel.risk_score ?? 0;
-      const color = vesselColor(vessel.risk_score);
+      const isMuted = vessel.is_inactive || vessel.is_resolved;
+      const color = isMuted ? "#64748b" : vesselColor(vessel.risk_score);
       const isSelected = vessel.id === selectedVesselId;
       const h = isSelected ? 42 : score >= RISK_THRESHOLDS.verify ? 34 : 26;
       const course = vessel.latest_position.course_over_ground ?? 0;
@@ -271,11 +272,12 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
 
       el.style.width = `${w}px`;
       el.style.height = `${h}px`;
-      const glowSize = score >= RISK_THRESHOLDS.escalate ? 8 : score >= RISK_THRESHOLDS.verify ? 5 : 3;
-      const glowAlpha = score >= RISK_THRESHOLDS.verify ? "cc" : "80";
+      const glowSize = isMuted ? 0 : score >= RISK_THRESHOLDS.escalate ? 8 : score >= RISK_THRESHOLDS.verify ? 5 : 3;
+      const glowAlpha = isMuted ? "00" : score >= RISK_THRESHOLDS.verify ? "cc" : "80";
+      const pulseAnimation = (!isMuted && score >= RISK_THRESHOLDS.escalate) ? 'animation:pulse 2s infinite;' : '';
 
       el.innerHTML = `
-      <div style="width:100%;height:100%;${score >= RISK_THRESHOLDS.escalate ? 'animation:pulse 2s infinite;' : ''}">
+      <div style="width:100%;height:100%;${pulseAnimation}">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${w}" height="${h}"
              style="transform:rotate(${course}deg);transition:transform 0.5s ease;filter:drop-shadow(0 0 ${glowSize}px ${color}${glowAlpha})">
           <path d="${hull}" fill="${color}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round"/>
@@ -284,7 +286,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
         </svg>
       </div>`;
 
-      el.title = `${vessel.name} (${vessel.mmsi})`;
+      el.title = `${vessel.name} (${vessel.mmsi})${vessel.is_inactive && vessel.status_reason ? ` — ${vessel.status_reason}` : ""}`;
       marker.setLngLat([vessel.latest_position.longitude, vessel.latest_position.latitude]);
     });
 
@@ -305,6 +307,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
       center: [-118.265, 33.725],
       zoom: 12.5,
       pitch: 0,
+      attributionControl: false,
     });
 
     map.on("error", () => {
@@ -676,7 +679,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
     <div className="absolute inset-0">
       <div ref={mapContainer} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" }} />
       {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-[#0d1320]/95 backdrop-blur-md border border-[#1a2235] rounded-xl p-3.5 text-[10px] shadow-xl shadow-black/30">
+      <div className="absolute bottom-4 left-4 bg-[#0d1320]/95 backdrop-blur-md border border-[#1a2235] rounded-xl p-3.5 text-[10px] shadow-2xl shadow-black/50 ring-1 ring-white/[0.03]">
         <div className="text-[9px] text-slate-500 uppercase tracking-[0.15em] mb-2.5 font-semibold">Risk Level</div>
         <div className="space-y-2">
           <LegendItem color="#22c55e" label="Normal" />
@@ -705,7 +708,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
         </div>
       </div>
       {/* Base map toggle */}
-      <div className="absolute bottom-4 right-4 bg-[#0d1320]/95 backdrop-blur-md border border-[#1a2235] rounded-xl overflow-hidden shadow-xl shadow-black/30 flex">
+      <div className="absolute bottom-4 right-4 bg-[#0d1320]/95 backdrop-blur-md border border-[#1a2235] rounded-xl overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-white/[0.03] flex">
         <button
           onClick={() => setBaseMap("satellite")}
           className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${

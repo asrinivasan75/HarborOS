@@ -13,6 +13,7 @@ interface VesselDetailProps {
   onClose: () => void;
   onSatelliteFootprint?: (footprint: SatelliteFootprint | null) => void;
   onAlertAction?: (alertId: string, newStatus: string) => void;
+  closing?: boolean;
 }
 
 function parseSatelliteMediaRef(resultMediaRef: string | null): {
@@ -217,6 +218,7 @@ function formatReportHTML(report: Record<string, unknown>): string {
   return html;
 }
 
+export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint, onAlertAction, closing }: VesselDetailProps) {
 function RiskSparkline({ data }: { data: RiskHistoryPoint[] }) {
   if (data.length < 2) return null;
 
@@ -395,28 +397,25 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
   const action = level === "normal" ? "normal" : (vessel.recommended_action ?? "ignore");
 
   return (
-    <div className="w-[400px] bg-[#0d1320] border-l border-[#1a2235] flex flex-col shrink-0 overflow-y-auto">
+    <div
+      className="w-[360px] bg-[#0d1320] border-l border-[#1a2235] flex flex-col shrink-0 overflow-y-auto shadow-2xl shadow-black/50"
+      style={{ animation: closing ? "slide-out-right 0.2s ease-in forwards" : "slide-in-right 0.25s ease-out" }}
+    >
       {/* Header */}
-      <div className="p-5 border-b border-[#1a2235]">
+      <div className="px-4 py-3 border-b border-[#1a2235]">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0 pr-3">
             <h2 className="text-base font-semibold text-slate-100 truncate">{vessel.name}</h2>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-[11px] text-slate-500 font-mono">MMSI {vessel.mmsi}</span>
-              {vessel.imo && (
-                <>
-                  <span className="text-slate-700">/</span>
-                  <span className="text-[11px] text-slate-500 font-mono">IMO {vessel.imo}</span>
-                </>
-              )}
-            </div>
+            <span className="text-[11px] text-slate-500 font-mono">
+              MMSI {vessel.mmsi}{vessel.imo ? ` / IMO ${vessel.imo}` : ""}
+            </span>
           </div>
           <button
             onClick={handleExportReport}
             disabled={exportLoading}
-            className="text-[10px] text-slate-500 hover:text-blue-400 uppercase tracking-wider transition-colors disabled:opacity-50"
+            className="text-[10px] text-slate-500 hover:text-blue-400 uppercase tracking-wider transition-colors disabled:opacity-50 mr-2"
           >
-            {exportLoading ? "Exporting..." : "Export Report"}
+            {exportLoading ? "..." : "Export"}
           </button>
           <button
             onClick={onClose}
@@ -429,32 +428,45 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
         </div>
       </div>
 
-      {/* Risk Score */}
-      <div className="p-5 border-b border-[#1a2235]">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Risk Assessment</span>
-          <span className={`text-[9px] font-semibold uppercase px-2 py-0.5 rounded-md border ${actionStyle(action)}`}>
-            {action}
+      {/* Inactive / Resolved Status Banner */}
+      {(vessel.is_inactive || vessel.is_resolved) && (
+        <div className="bg-slate-500/10 border-b border-[#1a2235] px-4 py-2 flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">
+            {vessel.is_resolved ? "RESOLVED" : vessel.status_reason?.toLowerCase().includes("stationary") ? "STATIONARY" : "INACTIVE"}
+          </span>
+          <span className="text-[10px] text-slate-500 truncate">
+            {vessel.status_reason || "No active threat profile"}
           </span>
         </div>
-        <div className="flex items-end gap-2 mb-3">
-          <span className={`text-4xl font-bold font-mono leading-none ${riskColor(riskScore)}`}>
+      )}
+
+      {/* Risk Score */}
+      <div className="px-4 py-3 border-b border-[#1a2235]">
+        <div className="flex items-center gap-3 mb-2">
+          <span className={`text-3xl font-bold font-mono leading-none ${riskColor(riskScore)}`}>
             {Math.round(riskScore)}
           </span>
-          <span className="text-sm text-slate-600 mb-0.5 font-mono">/100</span>
-        </div>
-        {/* Risk bar */}
-        <div className="w-full bg-[#111827] rounded-full h-1.5 overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-500 ${
-              riskScore >= RISK_THRESHOLDS.escalate ? "bg-red-400" : riskScore >= RISK_THRESHOLDS.verify ? "bg-orange-400" : riskScore >= RISK_THRESHOLDS.monitor ? "bg-yellow-400" : "bg-green-400"
-            }`}
-            style={{ width: `${riskScore}%` }}
-          />
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Risk</span>
+              <span className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border ${actionStyle(action)}`}>
+                {action}
+              </span>
+            </div>
+            <div className="w-full bg-[#111827] rounded-full h-1 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  riskScore >= RISK_THRESHOLDS.escalate ? "bg-red-400" : riskScore >= RISK_THRESHOLDS.verify ? "bg-orange-400" : riskScore >= RISK_THRESHOLDS.monitor ? "bg-yellow-400" : "bg-green-400"
+                }`}
+                style={{ width: `${riskScore}%` }}
+              />
+            </div>
+          </div>
         </div>
         {riskHistory.length >= 2 && <RiskSparkline data={riskHistory} />}
         {vessel.explanation && (
-          <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">{vessel.explanation}</p>
+          <p className="text-[11px] text-slate-400 leading-relaxed">{vessel.explanation}</p>
         )}
       </div>
 
@@ -468,8 +480,8 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
           : null;
         if (!streamUrl || streamUrl === "null") return null;
         return (
-          <div className="p-5 border-b border-[#1a2235]">
-            <div className="flex items-center justify-between mb-3">
+          <div className="px-4 py-3 border-b border-[#1a2235]">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">
                 Live Camera Feed
               </h3>
@@ -479,10 +491,10 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
                 rel="noopener noreferrer"
                 className="text-[9px] text-blue-400 hover:text-blue-300"
               >
-                Open fullscreen
+                Fullscreen
               </a>
             </div>
-            <div className="rounded-lg overflow-hidden bg-black aspect-video border border-[#1a2235] relative">
+            <div className="rounded-lg overflow-hidden bg-black aspect-video border border-[#1a2235]">
               <iframe
                 src={streamUrl}
                 title="SeaPod live camera feed"
@@ -491,54 +503,65 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
                 sandbox="allow-same-origin allow-scripts"
               />
             </div>
-            <p className="text-[9px] text-slate-600 mt-2 font-mono truncate">{streamUrl}</p>
           </div>
         );
       })()}
 
       {/* Anomaly Signals */}
       {vessel.anomaly_signals.length > 0 && (
-        <div className="p-5 border-b border-[#1a2235]">
-          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">
-            Anomaly Signals ({vessel.anomaly_signals.length})
+        <div className="px-4 py-3 border-b border-[#1a2235]">
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">
+            Signals ({vessel.anomaly_signals.length})
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {vessel.anomaly_signals.map((signal, i) => (
-              <div key={i} className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-medium text-slate-300 uppercase tracking-wide">
+              <div key={i} className="bg-[#111827] rounded-md px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-medium text-slate-300">
                     {signalLabel(signal.anomaly_type)}
                   </span>
-                  <span className={`text-[10px] font-semibold uppercase tracking-wide ${severityLabel(signal.severity).color}`}>
+                  <span className={`text-[9px] font-semibold uppercase ${severityLabel(signal.severity).color}`}>
                     {severityLabel(signal.severity).text}
                   </span>
                 </div>
-                <div className="w-full bg-[#0d1320] rounded-full h-1 mb-2">
-                  <div
-                    className={`h-full rounded-full ${severityBarColor(signal.severity)}`}
-                    style={{ width: `${signal.severity * 100}%` }}
-                  />
-                </div>
-                <p className="text-[10px] text-slate-500 leading-relaxed">{signal.description}</p>
+                <p className="text-[10px] text-slate-500 leading-snug mt-1">{signal.description}</p>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Vessel Info */}
-      <div className="p-5 border-b border-[#1a2235]">
-        <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Vessel Information</h3>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+      {/* Vessel Info + Position */}
+      <div className="px-4 py-3 border-b border-[#1a2235]">
+        <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Vessel</h3>
+        <div className="grid grid-cols-3 gap-x-3 gap-y-2">
           <InfoRow label="Type" value={vessel.vessel_type} />
           <InfoRow label="Flag" value={vessel.flag_state} />
+          <InfoRow label="Callsign" value={vessel.callsign || "\u2014"} />
           <InfoRow label="Length" value={vessel.length ? `${vessel.length}m` : "\u2014"} />
           <InfoRow label="Beam" value={vessel.beam ? `${vessel.beam}m` : "\u2014"} />
           <InfoRow label="Draft" value={vessel.draft ? `${vessel.draft}m` : "\u2014"} />
-          <InfoRow label="Callsign" value={vessel.callsign || "\u2014"} />
-          <InfoRow label="Destination" value={vessel.destination || "\u2014"} />
+          {vessel.destination && <InfoRow label="Dest" value={vessel.destination} />}
           <InfoRow label="Deficiencies" value={String(vessel.inspection_deficiencies)} highlight={vessel.inspection_deficiencies > 0} />
         </div>
+        {vessel.latest_position && (
+          <>
+            <div className="border-t border-[#1a2235]/50 mt-2.5 pt-2">
+              <div className="grid grid-cols-4 gap-x-3">
+                <InfoRow label="Lat" value={vessel.latest_position.latitude.toFixed(4)} />
+                <InfoRow label="Lon" value={vessel.latest_position.longitude.toFixed(4)} />
+                <InfoRow
+                  label="Speed"
+                  value={vessel.latest_position.speed_over_ground != null ? `${vessel.latest_position.speed_over_ground.toFixed(1)} kt` : "\u2014"}
+                />
+                <InfoRow
+                  label="Course"
+                  value={vessel.latest_position.course_over_ground != null ? `${vessel.latest_position.course_over_ground.toFixed(0)}\u00B0` : "\u2014"}
+                />
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Current Position */}
@@ -593,9 +616,9 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
       )}
 
       {/* Verification Action */}
-      {riskScore >= RISK_THRESHOLDS.verify && (
-        <div className="p-5">
-          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Verification</h3>
+      {riskScore >= RISK_THRESHOLDS.monitor && (
+        <div className="px-4 py-3">
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Verification</h3>
           {verification ? (
             <SatelliteVerificationResult
               verification={verification}
@@ -628,7 +651,7 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
               <button
                 onClick={handleVerify}
                 disabled={verifyLoading || !alertId}
-                className="w-full py-2.5 px-4 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 hover:border-blue-500/40 disabled:bg-[#111827] disabled:border-[#1a2235] disabled:text-slate-600 text-blue-400 text-sm font-medium rounded-lg transition-all"
+                className="w-full py-2 px-3 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 hover:border-blue-500/40 disabled:bg-[#111827] disabled:border-[#1a2235] disabled:text-slate-600 text-blue-400 text-[11px] font-medium rounded-lg transition-all"
               >
                 {verifyLoading ? "Requesting..." : `Request ${verifyAsset === "satellite" ? "Satellite Pass" : "Verification"}`}
               </button>
@@ -639,9 +662,9 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
 
       {/* Alert Actions */}
       {alertId && (
-        <div className="p-5 border-b border-[#1a2235]">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Alert Actions</h3>
+        <div className="px-4 py-3 border-b border-[#1a2235]">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Actions</h3>
             {alertStatus && (
               <span className="text-[9px] font-semibold uppercase px-2 py-0.5 rounded-md border bg-blue-500/10 text-blue-400 border-blue-500/25">
                 {alertStatus}
@@ -676,8 +699,8 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
 
       {/* Operator Notes */}
       {alertId && (
-        <div className="p-5 border-b border-[#1a2235]">
-          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Operator Notes</h3>
+        <div className="px-4 py-3 border-b border-[#1a2235]">
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Notes</h3>
           {savedNotes.length > 0 && (
             <div className="space-y-1.5 mb-3">
               {savedNotes.map((note, i) => (
@@ -706,8 +729,8 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
 
       {/* Feedback */}
       {alertId && (
-        <div className="p-5">
-          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Feedback</h3>
+        <div className="px-4 py-3">
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Feedback</h3>
           {feedback ? (
             <div className={`rounded-lg p-3 border text-center text-[11px] font-medium ${
               feedback === "confirmed_threat"
