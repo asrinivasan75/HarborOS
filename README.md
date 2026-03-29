@@ -72,6 +72,7 @@ HarborOS/
 │   ├── PROJECT_PLAN.md
 │   ├── DEMO_STORY.md
 │   ├── DATA_SOURCES.md
+│   ├── FAQ.md
 │   └── PITCH.md
 └── README.md
 ```
