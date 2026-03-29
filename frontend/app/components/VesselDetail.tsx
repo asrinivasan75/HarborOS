@@ -392,14 +392,26 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
         if (!streamUrl || streamUrl === "null") return null;
         return (
           <div className="p-5 border-b border-[#1a2235]">
-            <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">
-              Live Camera Feed
-            </h3>
-            <div className="rounded-lg overflow-hidden bg-black aspect-video border border-[#1a2235]">
-              <img
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">
+                Live Camera Feed
+              </h3>
+              <a
+                href={streamUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[9px] text-blue-400 hover:text-blue-300"
+              >
+                Open fullscreen
+              </a>
+            </div>
+            <div className="rounded-lg overflow-hidden bg-black aspect-video border border-[#1a2235] relative">
+              <iframe
                 src={streamUrl}
-                alt="SeaPod live camera feed"
-                className="w-full h-full object-cover"
+                title="SeaPod live camera feed"
+                className="w-full h-full border-0"
+                allow="autoplay"
+                sandbox="allow-same-origin allow-scripts"
               />
             </div>
             <p className="text-[9px] text-slate-600 mt-2 font-mono truncate">{streamUrl}</p>
