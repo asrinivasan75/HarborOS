@@ -94,12 +94,12 @@ export default function RegionSummary({ regions, activeRegion, onSelectRegion }:
   if (regionKeys.length === 0) return null;
 
   return (
-    <div className="flex-shrink-0 px-2 py-1.5 overflow-x-auto scroll-thin">
-      <div className="flex gap-1.5">
+    <div className="flex-shrink-0 px-3 py-1.5">
+      <div className="flex gap-1.5 w-full">
         <button
           onClick={() => onSelectRegion(null)}
           className={`
-            flex-shrink-0 px-2.5 py-1.5 rounded border text-left transition-all
+            flex-1 min-w-0 px-2.5 py-1.5 rounded border text-left transition-all
             bg-[#111827] hover:bg-[#151d2e]
             ${activeRegion === null ? "border-blue-500/30" : "border-[#1a2235]"}
           `}
@@ -117,13 +117,13 @@ export default function RegionSummary({ regions, activeRegion, onSelectRegion }:
               key={key}
               onClick={() => onSelectRegion(key)}
               className={`
-                flex-shrink-0 px-2.5 py-1.5 rounded border text-left transition-all
+                flex-1 min-w-0 px-2.5 py-1.5 rounded border text-left transition-all
                 bg-[#111827] hover:bg-[#151d2e]
                 ${isActive ? "border-blue-500/30" : "border-[#1a2235]"}
               `}
             >
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-medium text-slate-200 truncate max-w-[80px]">
+                <span className="text-[10px] font-medium text-slate-200 truncate">
                   {label}
                 </span>
                 {stat && stat.escalationCount > 0 && (

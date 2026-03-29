@@ -4,6 +4,21 @@ Maritime awareness and operator decision-support platform for contested littoral
 
 Detect suspicious vessels. Assess risk. Recommend action. Dispatch verification.
 
+## The Problem
+
+Harbors and littoral zones are increasingly contested. Small, cheap threats — smuggling vessels, hostile reconnaissance, unauthorized intrusions — exploit gaps in maritime awareness. Legacy systems are expensive, siloed, and slow. Operators drown in raw AIS data with no triage, no scoring, and no clear path to action.
+
+## What HarborOS Does
+
+HarborOS turns raw vessel traffic data into operator decisions through a four-stage pipeline:
+
+1. **Detect** — 10 anomaly detectors scan vessel behavior for suspicious patterns
+2. **Assess** — A fuzzy logic engine combines signals into a composite risk score (0–100)
+3. **Recommend** — MARSEC-aligned action tiers guide operator response
+4. **Verify** — Clean integration surface for dispatching verification assets (cameras, patrol boats, drones)
+
+Every alert is explainable. Every risk score shows its work.
+
 ## Quick Start
 
 ```bash
@@ -18,39 +33,119 @@ uvicorn app.main:app --reload --port 8000
 # Frontend (separate terminal)
 cd frontend
 npm install
-npm run dev                 # Starts on http://localhost:3000
+npm run dev                 # http://localhost:3000
+
+# Or both at once
+./start.sh
 ```
 
-## Copernicus Setup
+## How the Algorithm Works
 
-Real Sentinel-2 imagery requires Copernicus Data Space credentials. Without them, HarborOS falls back to demo/simulated imagery.
+### Detection → Aggregation → Fuzzy Inference → Action
 
-1. Register at `https://dataspace.copernicus.eu`
-2. Create an OAuth client at `https://shapps.dataspace.copernicus.eu/dashboard/#/account/settings`
-3. Set these backend env vars before starting FastAPI:
-
-```bash
-export CDSE_CLIENT_ID="your_client_id"
-export CDSE_CLIENT_SECRET="your_client_secret"
+```
+Position Reports → Anomaly Detectors → Signal Aggregation → Fuzzy Inference → Risk Score → MARSEC Action
+                        ↑                      ↑                   ↑
+                  Vessel Profiles        Signal Weights       Mamdani Rule Base
+                  (type-aware           (defense-priority    (16 fuzzy rules,
+                   thresholds)           weighting)           3 input dimensions)
 ```
 
-If you prefer `.env`, put those keys in `backend/.env` before running `uvicorn app.main:app --reload --port 8000`.
+### Anomaly Detectors
 
-run this before starting the backend to verify your credentials and see a sample Sentinel-2 tile URL:
+| Detector | Method | What It Catches |
+|----------|--------|-----------------|
+| **AIS Gap** | IMO speed-dependent intervals (Res. A.1106) | Vessels going dark — gap vs. mandated reporting rate |
+| **Loitering** | F(c) course-change intensity (PMC 2023) | Circling, surveillance, rendezvous behavior |
+| **Geofence Breach** | Ray-casting point-in-polygon | Unauthorized entry into restricted/security zones |
+| **Kinematic Implausibility** | Position jump vs. physical constraints | GPS spoofing — impossible position changes |
+| **Type Mismatch** | Behavior vs. declared vessel type | Identity deception — cargo ship acting like a fishing boat |
+| **Speed Anomaly** | Rapid acceleration/deceleration + learned baselines | Evasive maneuvering, data anomalies |
+| **Heading Anomaly** | Course change frequency vs. type threshold | Search patterns, erratic maneuvering |
+| **Zone Lingering** | Time-in-zone accumulation | Prolonged presence near critical infrastructure |
+| **Statistical Outlier** | Z-score deviation from regional fleet | Behavior that doesn't match surrounding traffic |
+| **Collision Risk** | Mou et al. 2021 CPA/TCPA with F_angle | COLREGS non-compliance — refusing to yield |
+| **Dark Ship (Optical)** | SeaPod edge node optical detection | Vessels with no AIS transponder at all |
 
-cat > .env <<'EOF'
-CDSE_CLIENT_ID=sh-00bcffba-0f93-4c80-afdb-a4472934d1ca
-CDSE_CLIENT_SECRET=NlhMrdnBinFDt4UITKEAdTDQImSu0tmk
-EOF
+All detectors are **vessel-type-aware** — a fishing boat loitering is expected; a cargo ship loitering near an LNG terminal is not. Thresholds adjust per type (cargo, tanker, fishing, tug, passenger, military, high-speed craft).
 
-## What You'll See
+### Signal Aggregation
 
-Open `http://localhost:3000` — an operator console showing:
+Detected signals are weighted by defense relevance:
 
-- **Map view** of LA Harbor with ~15 vessels, color-coded by risk
-- **Alert feed** with suspicious contacts flagged and triaged
-- **Vessel detail panel** with risk score, anomaly signals, and recommended action
-- **Verification request** button demonstrating future hardware integration
+| Priority | Signals | Weight |
+|----------|---------|--------|
+| Critical | Dark Ship, AIS Gap | 1.00 |
+| High | Spoofing, Geofence Breach, Identity Mismatch | 0.85–0.95 |
+| Medium | Route Deviation, Loitering, Zone Lingering | 0.70–0.80 |
+| Lower | Speed, Heading, Statistical Outlier, Collision Risk | 0.40–0.60 |
+
+Multiple distinct signal types trigger a **diversity bonus** (8% for 2 types, 18% for 3+), because converging evidence from different detectors is far more suspicious than repeated signals of the same kind.
+
+### Fuzzy Risk Scoring
+
+Three inputs feed a Mamdani fuzzy inference engine:
+
+1. **Anomaly severity** (0–1) — composite from signal aggregation
+2. **Metadata deficiency** (0–1) — weighted missing identity fields (IMO, flag, callsign)
+3. **Inspection risk** (0–1) — port state control deficiency history
+
+Key design principle: **anomaly severity drives risk**. Metadata gaps and inspection history amplify existing suspicion but don't create risk on their own. A vessel with missing IMO but normal behavior stays low-risk. A vessel with missing IMO *and* AIS gaps near a restricted zone escalates fast.
+
+The engine evaluates 16 fuzzy rules and defuzzifies using a blended centroid + weighted-mean-of-maxima approach to produce a continuous 0–100 score.
+
+### MARSEC Action Tiers
+
+| Score | Action | MARSEC Level | Operator Guidance |
+|-------|--------|-------------|-------------------|
+| 80–100 | **ESCALATE** | MARSEC 3 | Immediate interdiction response |
+| 60–79 | **VERIFY** | MARSEC 2 | Request satellite/asset verification |
+| 35–59 | **MONITOR** | MARSEC 1 | Track vessel, log activity |
+| 0–34 | **NORMAL** | Below MARSEC 1 | No action needed |
+
+For the full algorithm reference with formulas and thresholds, see [`docs/ALGORITHM.md`](docs/ALGORITHM.md).
+
+## Architecture
+
+```
+┌───────────────────────────────────────────────────────┐
+│                   Operator Dashboard                   │
+│    Next.js · TypeScript · Tailwind · MapLibre GL       │
+│                                                        │
+│  ┌──────────┐  ┌──────────┐  ┌─────────────────────┐  │
+│  │ Map View  │  │Alert Feed│  │ Vessel Detail       │  │
+│  │ + Heatmap │  │ + Triage │  │ + Risk + Signals    │  │
+│  └──────────┘  └──────────┘  └─────────────────────┘  │
+└───────────────────────┬───────────────────────────────┘
+                        │ REST API
+┌───────────────────────┴───────────────────────────────┐
+│                   FastAPI Backend                       │
+│                                                        │
+│  ┌────────────┐  ┌──────────────┐  ┌────────────────┐ │
+│  │ Ingestion  │  │  Anomaly     │  │  Fuzzy Risk    │ │
+│  │ + AISStream│  │  Detection   │  │  Scoring       │ │
+│  └─────┬──────┘  └──────┬───────┘  └──────┬─────────┘ │
+│        │                │                  │           │
+│  ┌─────┴────────────────┴──────────────────┴─────────┐ │
+│  │           Domain Models / SQLite                   │ │
+│  └───────────────────────────────────────────────────┘ │
+│                                                        │
+│  ┌───────────────────────────────────────────────────┐ │
+│  │  Data Adapters: AIS, Sentinel-2, NWS, USCG       │ │
+│  └───────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────┘
+```
+
+## Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python, FastAPI, SQLAlchemy, SQLite |
+| Frontend | Next.js, React, TypeScript, Tailwind CSS, MapLibre GL |
+| Anomaly Detection | 10 research-backed heuristic detectors |
+| Risk Scoring | Mamdani fuzzy inference engine |
+| Satellite Imagery | Copernicus Sentinel-2 (optional) |
+| Edge Nodes | SeaPod optical detection (experimental) |
 
 ## Project Structure
 
@@ -58,37 +153,63 @@ Open `http://localhost:3000` — an operator console showing:
 HarborOS/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI application
-│   │   ├── database.py          # SQLite setup
-│   │   ├── seed.py              # Demo data seeder
-│   │   ├── models/              # Domain models (SQLAlchemy + Pydantic)
-│   │   ├── services/            # Anomaly detection, risk scoring
-│   │   ├── api/                 # Route handlers
-│   │   └── data_sources/        # Source adapters (AIS, NOAA, NWS, USCG)
+│   │   ├── main.py                # FastAPI entry point
+│   │   ├── database.py            # SQLite setup
+│   │   ├── seed.py                # Demo data seeder
+│   │   ├── models/domain.py       # SQLAlchemy + Pydantic models
+│   │   ├── api/routes.py          # REST endpoints
+│   │   └── services/
+│   │       ├── anomaly_detection.py   # 10 anomaly detectors
+│   │       ├── risk_scoring.py        # Signal aggregation + scoring
+│   │       ├── fuzzy_risk.py          # Mamdani fuzzy inference engine
+│   │       ├── vessel_profiles.py     # Per-type behavior thresholds
+│   │       ├── pattern_learning.py    # Historical baseline learning
+│   │       ├── alert_service.py       # Alert lifecycle management
+│   │       └── ingestion_service.py   # Live AIS stream ingestion
 │   └── requirements.txt
-├── frontend/                    # Next.js operator dashboard
-├── data/demo/                   # Seeded demo fixtures
-├── docs/                        # Project docs
-│   ├── PROJECT_PLAN.md
-│   ├── DEMO_STORY.md
-│   ├── DATA_SOURCES.md
-│   ├── FAQ.md
-│   └── PITCH.md
-└── README.md
+├── frontend/
+│   └── app/
+│       ├── page.tsx               # Main dashboard
+│       ├── report/page.tsx        # Incident report (printable)
+│       ├── components/
+│       │   ├── MapView.tsx        # MapLibre GL map + heatmap
+│       │   ├── AlertFeed.tsx      # Alert triage panel
+│       │   ├── VesselDetail.tsx   # Vessel info + risk breakdown
+│       │   └── RiskDistribution.tsx   # Analytics panel
+│       └── lib/
+│           ├── api.ts             # API client
+│           └── risk.ts            # Shared risk thresholds
+├── docs/
+│   ├── ALGORITHM.md               # Full algorithm reference
+│   ├── DATA_SOURCES.md            # Data source adapters
+│   ├── DEMO_STORY.md              # Demo walkthrough script
+│   ├── PITCH.md                   # Project pitch
+│   └── PROJECT_PLAN.md            # Architecture & plan
+└── start.sh                       # Run both servers
 ```
 
-## Why This Matters
+## Copernicus Setup (Optional)
 
-Harbors and littoral zones are increasingly contested. Legacy defense systems are expensive, siloed, and slow. HarborOS proves that persistent maritime awareness, smart anomaly detection, and rapid verification loops can be built with software alone — cheaply, quickly, and extensibly.
+Real Sentinel-2 satellite imagery requires Copernicus Data Space credentials. Without them, HarborOS falls back to simulated imagery.
 
-Every alert is explainable. Every risk score shows its work. Every verification request is a clean API call away from dispatching a real asset. The software layer is the hard part, and it works today.
+1. Register at [dataspace.copernicus.eu](https://dataspace.copernicus.eu)
+2. Create an OAuth client in account settings
+3. Set env vars before starting the backend:
 
-## Stack
+```bash
+export CDSE_CLIENT_ID="your_client_id"
+export CDSE_CLIENT_SECRET="your_client_secret"
+```
 
-- **Backend**: Python / FastAPI / SQLite (SQLAlchemy)
-- **Frontend**: Next.js / TypeScript / Tailwind / MapLibre GL
-- **Data**: Seeded fixtures with adapters for AIS, NOAA, NWS, USCG sources
+## References
+
+- **Loitering**: "Loitering Behavior Detection by Spatiotemporal Characteristics" (PMC 2023, 97% accuracy)
+- **Collision Risk**: Mou et al. 2021, exponential CPA formula with F_angle encounter geometry
+- **AIS Intervals**: IMO Resolution A.1106(29), ITU-R M.1371
+- **Dark Vessels**: Global Fishing Watch (55,000+ deliberate AIS disabling events/year)
+- **Anomaly Survey**: Stach et al. 2023 maritime anomaly detection survey
+- **MARSEC Levels**: ISPS Code (International Ship and Port Facility Security)
 
 ## License
 
-Proprietary — Hackathon MVP
+Proprietary

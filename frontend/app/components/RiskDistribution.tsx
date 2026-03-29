@@ -1,7 +1,6 @@
 "use client";
 
 import { RiskDistribution } from "@/app/lib/api";
-import { riskTextClass, riskBgClass } from "@/app/lib/risk";
 
 interface Props {
   data: RiskDistribution | null;
@@ -12,11 +11,24 @@ interface Props {
 export default function RiskDistributionPanel({ data, onClose, closing }: Props) {
   if (!data) return null;
 
-  // Find max count for histogram scaling
-  const maxBinCount = Math.max(
+  // Scale to active counts so colors are prominent; resolved shown as faint outline
+  const maxActiveCount = Math.max(
+    ...data.histogram.map((b) => b.count_active),
+    1
+  );
+  const maxTotalCount = Math.max(
     ...data.histogram.map((b) => b.count_active + b.count_resolved),
     1
   );
+
+  const totalActive = data.tiers.reduce((s, t) => s + t.count, 0);
+
+  function binColor(binMid: number): { active: string; hex: string } {
+    if (binMid >= 80) return { active: "bg-red-500", hex: "#ef4444" };
+    if (binMid >= 60) return { active: "bg-orange-500", hex: "#f97316" };
+    if (binMid >= 35) return { active: "bg-yellow-500", hex: "#f59e0b" };
+    return { active: "bg-green-500", hex: "#22c55e" };
+  }
 
   return (
     <div
@@ -43,47 +55,68 @@ export default function RiskDistributionPanel({ data, onClose, closing }: Props)
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-8">
-        {/* MARSEC Tiers */}
+      <div className="flex-1 overflow-y-auto p-5 space-y-6">
+        {/* Summary Stats */}
+        <div className="grid grid-cols-4 gap-2">
+          {data.tiers.map((tier) => {
+            const colors: Record<string, { text: string; bg: string; border: string }> = {
+              escalate: { text: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/20" },
+              verify: { text: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/20" },
+              monitor: { text: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/20" },
+              normal: { text: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/20" },
+            };
+            const c = colors[tier.action] ?? colors.normal;
+            return (
+              <div key={tier.action} className={`${c.bg} border ${c.border} rounded-lg p-3 text-center`}>
+                <span className={`text-xl font-bold font-mono ${c.text}`}>{tier.count}</span>
+                <span className={`text-[8px] font-bold uppercase tracking-widest block mt-1 ${c.text} opacity-70`}>
+                  {tier.action}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* MARSEC Tiers Detail */}
         <section>
           <h3 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            Active Alerts by MARSEC Zone
+            MARSEC Zone Breakdown
           </h3>
-          <div className="space-y-3">
+          <div className="space-y-2">
             {data.tiers.map((tier) => {
-              // Convert action string back to pseudo-score to reuse risk colors
-              const pseudoScore =
-                tier.action === "escalate" ? 80 :
-                tier.action === "verify" ? 60 :
-                tier.action === "monitor" ? 30 : 0;
-                
-              const textColor = pseudoScore ? riskTextClass(pseudoScore) : "text-slate-400";
-              const bgColor = pseudoScore ? riskBgClass(pseudoScore) : "bg-slate-500/10";
-              const borderColor = pseudoScore ? "border-slate-800" : "border-slate-800"; // Generic border
+              const colors: Record<string, { text: string; bar: string }> = {
+                escalate: { text: "text-red-400", bar: "bg-red-400" },
+                verify: { text: "text-orange-400", bar: "bg-orange-400" },
+                monitor: { text: "text-yellow-400", bar: "bg-yellow-400" },
+                normal: { text: "text-green-400", bar: "bg-green-400" },
+              };
+              const c = colors[tier.action] ?? colors.normal;
+              const pct = totalActive > 0 ? (tier.count / totalActive) * 100 : 0;
 
               return (
                 <div key={tier.action} className="bg-[#111827] border border-[#1a2235] rounded-lg p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border ${bgColor} ${textColor} ${borderColor}`}>
-                      {tier.action.toUpperCase()}
-                    </span>
-                    <span className="text-lg font-mono font-bold text-slate-200">
-                      {tier.count}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${c.text}`}>
+                        {tier.action}
+                      </span>
+                      <span className="text-[9px] text-slate-600 font-mono">{pct.toFixed(0)}%</span>
+                    </div>
+                    <span className="text-sm font-mono font-bold text-slate-200">{tier.count}</span>
+                  </div>
+                  <div className="w-full bg-[#0d1320] rounded-full h-1.5 mb-2">
+                    <div className={`h-full rounded-full ${c.bar} transition-all`} style={{ width: `${Math.max(pct, 1)}%` }} />
                   </div>
                   {tier.count > 0 && (
-                    <div className="mt-2 pt-2 border-t border-[#1a2235] border-dashed">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-[10px] text-slate-500">Avg Signals/Vessel:</span>
-                        <span className="text-[11px] text-slate-300 font-mono">{tier.avg_signals}</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1 mt-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap gap-1">
                         {Object.entries(tier.top_signals).map(([sig, cnt]) => (
-                          <span key={sig} className="text-[9px] px-1.5 py-0.5 rounded bg-[#1a2235] text-slate-400">
-                            {sig.replace("_", " ")} ({cnt})
+                          <span key={sig} className="text-[8px] px-1.5 py-0.5 rounded bg-[#0d1320] text-slate-500 font-mono">
+                            {sig.replace(/_/g, " ")} ({cnt})
                           </span>
                         ))}
                       </div>
+                      <span className="text-[9px] text-slate-600 font-mono shrink-0 ml-2">{tier.avg_signals} sig/v</span>
                     </div>
                   )}
                 </div>
@@ -95,79 +128,118 @@ export default function RiskDistributionPanel({ data, onClose, closing }: Props)
         {/* Global Score Histogram */}
         <section>
           <h3 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
-            Global Score Histogram (All Time)
+            Score Distribution
           </h3>
-          <div className="bg-[#111827] border border-[#1a2235] rounded-lg p-4 h-64 flex flex-col justify-end relative mt-6">
-            <div className="flex justify-between items-end h-[180px] gap-1 relative z-10 w-full">
-              {data.histogram.map((bin) => {
-                const total = bin.count_active + bin.count_resolved;
-                const totalHeight = `${Math.max((total / maxBinCount) * 100, 1)}%`;
-                
-                const activeHeight = bin.count_active > 0 
-                  ? `${(bin.count_active / total) * 100}%` 
-                  : "0%";
-                  
-                const binMid = (bin.bin_start + bin.bin_end) / 2;
-                const isRisk = binMid >= 50;
+          <div className="bg-[#111827] border border-[#1a2235] rounded-lg p-4">
+            {/* Y-axis + bars */}
+            <div className="flex gap-2">
+              {/* Y-axis labels */}
+              <div className="flex flex-col justify-between h-[160px] text-[8px] text-slate-600 font-mono py-0.5 shrink-0 w-5 text-right">
+                <span>{maxActiveCount}</span>
+                <span>{Math.round(maxActiveCount / 2)}</span>
+                <span>0</span>
+              </div>
+              {/* Bars */}
+              <div className="flex-1 flex items-end h-[160px] gap-[2px]">
+                {data.histogram.map((bin) => {
+                  const total = bin.count_active + bin.count_resolved;
+                  const binMid = (bin.bin_start + bin.bin_end) / 2;
+                  const bc = binColor(binMid);
+                  // Active bar scaled to active max — always prominent
+                  const activePct = bin.count_active > 0 ? Math.max((bin.count_active / maxActiveCount) * 100, 3) : 0;
+                  // Resolved shown as a faint outline behind, scaled to total max
+                  const totalPct = total > 0 ? Math.max((total / maxTotalCount) * 100, 3) : 0;
 
-                // Only render bins with > 0 total so we don't have invisible 1% slivers unnecessarily 
-                // unless we want continuous axis. A 1% height is okay for continuous.
-                
-                return (
-                  <div key={bin.bin_start} className="flex-1 flex flex-col justify-end h-[100%] group relative">
-                    {/* Tooltip */}
-                    <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-slate-200 text-[9px] py-1 px-2 rounded whitespace-nowrap z-50 pointer-events-none transition-opacity shadow-lg border border-slate-700">
-                      {bin.bin_start}–{bin.bin_end}: {bin.count_active} active, {bin.count_resolved} resolved
-                    </div>
-                    
-                    {total > 0 && (
-                      <div 
-                        className="w-full relative rounded-sm flex flex-col justify-end overflow-hidden"
-                        style={{ height: totalHeight }}
-                      >
-                        {/* Resolved bar (dim background) */}
-                        <div className="absolute inset-0 bg-slate-700/30 rounded-sm" />
-                        
-                        {/* Active bar (colored foreground) */}
-                        <div 
-                          className={`w-full relative z-10 ${isRisk ? 'bg-orange-500/80' : 'bg-blue-500/60'} rounded-sm`}
-                          style={{ height: activeHeight }}
-                        />
+                  return (
+                    <div key={bin.bin_start} className="flex-1 flex flex-col justify-end h-full group relative">
+                      {/* Tooltip */}
+                      <div className="opacity-0 group-hover:opacity-100 absolute -top-10 left-1/2 -translate-x-1/2 bg-[#0d1320] text-slate-200 text-[9px] py-1.5 px-2.5 rounded-md whitespace-nowrap z-50 pointer-events-none transition-opacity shadow-xl border border-[#1a2235]">
+                        <span className="font-mono font-bold">{bin.bin_start}–{bin.bin_end}</span>
+                        <span className="text-slate-500 mx-1">|</span>
+                        {bin.count_active} active, {bin.count_resolved} resolved
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+
+                      <div className="w-full relative h-full flex flex-col justify-end">
+                        {/* Resolved outline bar (faint, behind) */}
+                        {bin.count_resolved > 0 && (
+                          <div
+                            className="absolute bottom-0 left-0 right-0 border border-slate-700/50 rounded-t-sm bg-slate-800/20"
+                            style={{ height: `${totalPct}%` }}
+                          />
+                        )}
+                        {/* Active bar (full color, in front) */}
+                        {bin.count_active > 0 ? (
+                          <div
+                            className={`w-full ${bc.active} opacity-90 rounded-t-sm relative z-10`}
+                            style={{ height: `${activePct}%` }}
+                          />
+                        ) : total > 0 ? (
+                          <div
+                            className="w-full bg-slate-700/30 rounded-t-sm"
+                            style={{ height: `${totalPct}%` }}
+                          />
+                        ) : (
+                          <div className="w-full h-[1px] bg-[#1a2235] rounded-full" />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            
-            {/* X-axis labels */}
-            <div className="flex justify-between text-[9px] text-slate-500 mt-2 font-mono border-t border-[#1a2235] pt-1">
-              <span>0</span>
-              <span>25</span>
-              <span>50</span>
-              <span>75</span>
-              <span>100</span>
+
+            {/* X-axis */}
+            <div className="flex gap-2 mt-2">
+              <div className="w-5 shrink-0" />
+              <div className="flex-1 flex justify-between text-[8px] text-slate-600 font-mono border-t border-[#1a2235] pt-1">
+                <span>0</span>
+                <span>35</span>
+                <span>60</span>
+                <span>80</span>
+                <span>100</span>
+              </div>
             </div>
-          </div>
-          <div className="flex justify-center flex-wrap gap-4 mt-4">
-             <div className="flex items-center gap-1.5">
-               <div className="w-2 h-2 rounded-sm bg-blue-500/60" />
-               <span className="text-[10px] text-slate-400">Active (Monitor)</span>
-             </div>
-             <div className="flex items-center gap-1.5">
-               <div className="w-2 h-2 rounded-sm bg-orange-500/80" />
-               <span className="text-[10px] text-slate-400">Active (Verify/Escalate)</span>
-             </div>
-             <div className="flex items-center gap-1.5">
-               <div className="w-2 h-2 rounded-sm bg-slate-700/30" />
-               <span className="text-[10px] text-slate-400">Resolved</span>
-             </div>
+
+            {/* MARSEC zone indicators */}
+            <div className="flex gap-2 mt-2">
+              <div className="w-5 shrink-0" />
+              <div className="flex-1 flex h-1.5 rounded-full overflow-hidden">
+                <div className="bg-green-500/30" style={{ width: "35%" }} />
+                <div className="bg-yellow-500/30" style={{ width: "25%" }} />
+                <div className="bg-orange-500/30" style={{ width: "20%" }} />
+                <div className="bg-red-500/30" style={{ width: "20%" }} />
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="flex justify-center flex-wrap gap-3 mt-4 pt-3 border-t border-[#1a2235]">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-sm bg-green-500/80" />
+                <span className="text-[9px] text-slate-500">Normal</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-sm bg-yellow-500/80" />
+                <span className="text-[9px] text-slate-500">Monitor</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-sm bg-orange-500/80" />
+                <span className="text-[9px] text-slate-500">Verify</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-sm bg-red-500/80" />
+                <span className="text-[9px] text-slate-500">Escalate</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-sm bg-slate-700/40" />
+                <span className="text-[9px] text-slate-500">Resolved</span>
+              </div>
+            </div>
           </div>
         </section>
-        
-        <div className="text-[10px] text-slate-500 leading-relaxed bg-blue-500/5 p-3 rounded-lg border border-blue-500/10 mt-6">
+
+        <div className="text-[10px] text-slate-500 leading-relaxed bg-blue-500/5 p-3 rounded-lg border border-blue-500/10">
           <strong className="text-blue-400 font-semibold block mb-1">Captain&apos;s Note</strong>
-          Risk scores represent algorithm convergence, not threat probability. Over 95% of alerts are minor <strong>MONITOR</strong> items representing normal port friction. Only <strong>VERIFY</strong> and <strong>ESCALATE</strong> targets (scores 50+) require active asset dispatch.
+          Risk scores represent algorithm convergence, not threat probability. Over 95% of alerts are minor <strong>MONITOR</strong> items representing normal port friction. Only <strong>VERIFY</strong> and <strong>ESCALATE</strong> targets (scores 60+) require active asset dispatch.
         </div>
       </div>
     </div>
