@@ -21,6 +21,21 @@ npm install
 npm run dev                 # Starts on http://localhost:3000
 ```
 
+## Copernicus Setup
+
+Real Sentinel-2 imagery requires Copernicus Data Space credentials. Without them, HarborOS falls back to demo/simulated imagery.
+
+1. Register at `https://dataspace.copernicus.eu`
+2. Create an OAuth client at `https://shapps.dataspace.copernicus.eu/dashboard/#/account/settings`
+3. Set these backend env vars before starting FastAPI:
+
+```bash
+export CDSE_CLIENT_ID="your_client_id"
+export CDSE_CLIENT_SECRET="your_client_secret"
+```
+
+If you prefer `.env`, put those keys in `backend/.env` before running `uvicorn app.main:app --reload --port 8000`.
+
 ## What You'll See
 
 Open `http://localhost:3000` — an operator console showing:

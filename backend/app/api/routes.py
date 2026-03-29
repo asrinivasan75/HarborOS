@@ -1,7 +1,7 @@
 """FastAPI route handlers."""
 
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import uuid
 
@@ -22,6 +22,51 @@ from app.services.risk_scoring import compute_risk_assessment
 from app.services.alert_service import get_alerts, update_alert_status, generate_alerts_for_all_vessels
 
 router = APIRouter()
+
+
+def _search_satellite_catalog(
+    lat: float,
+    lng: float,
+    windows: list[tuple[float, int, float]] | None = None,
+) -> tuple[dict | None, list[float], dict]:
+    """Search CDSE catalog with progressively wider windows.
+
+    Each window tuple is (spread_degrees, days_back, max_cloud_cover).
+    Returns the first matching catalog hit plus the bbox and search metadata
+    used to find it. If no hit is found, returns the widest bbox and the final
+    search window metadata.
+    """
+    from app.data_sources.sentinel_adapter import search_imagery
+
+    search_windows = windows or [
+        (0.05, 30, 50.0),
+        (0.08, 45, 70.0),
+        (0.12, 60, 90.0),
+    ]
+
+    fallback_bbox = [lng - search_windows[-1][0], lat - search_windows[-1][0], lng + search_windows[-1][0], lat + search_windows[-1][0]]
+    fallback_meta = {
+        "spread_deg": search_windows[-1][0],
+        "days_back": search_windows[-1][1],
+        "max_cloud_cover": search_windows[-1][2],
+    }
+
+    for spread, days_back, max_cloud_cover in search_windows:
+        bbox = [lng - spread, lat - spread, lng + spread, lat + spread]
+        results = search_imagery(
+            bbox=bbox,
+            days_back=days_back,
+            max_cloud_cover=max_cloud_cover,
+            limit=1,
+        )
+        if results:
+            return results[0], bbox, {
+                "spread_deg": spread,
+                "days_back": days_back,
+                "max_cloud_cover": max_cloud_cover,
+            }
+
+    return None, fallback_bbox, fallback_meta
 
 
 # ── Regions ────────────────────────────────────────────
@@ -495,8 +540,7 @@ def create_verification_request(
     req: VerificationRequestCreate,
     db: Session = Depends(get_db),
 ):
-    """Create a mocked verification request (future hardware integration point)."""
-    # Simulated asset assignment
+    """Create a verification request. Uses real Sentinel-2 data when CDSE is configured."""
     asset_registry = {
         "camera": {"asset_id": "DCAM-NODE-3", "name": "Dockside Camera Node 3", "eta_min": 4},
         "patrol_boat": {"asset_id": "PB-07", "name": "Harbor Patrol 07", "eta_min": 12},
@@ -508,35 +552,99 @@ def create_verification_request(
     is_satellite = (req.asset_type == "satellite")
     now = datetime.utcnow()
 
-    # For satellite: immediately return last-pass imagery data
     last_pass_notes = None
     last_pass_confidence = None
     last_pass_media = None
+
     if is_satellite:
-        import random
-        days_ago = random.randint(1, 4)
-        cloud_cover = random.randint(5, 35)
-        last_pass_notes = json.dumps({
-            "last_pass": {
-                "acquired": (now - __import__("datetime").timedelta(days=days_ago)).isoformat() + "Z",
-                "satellite": "Sentinel-2A",
-                "resolution_m": 10,
-                "cloud_cover_pct": cloud_cover,
-                "bands": "True Color (B4/B3/B2)",
-                "status": "delivered",
-            },
-            "next_pass": {
-                "eta_minutes": asset["eta_min"],
-                "satellite": "Sentinel-2B",
-                "expected_resolution_m": 10,
-                "status": "tasking_accepted",
-            },
-        })
-        last_pass_confidence = round(0.7 - (cloud_cover / 100) * 0.3, 2)
-        last_pass_media = f"s2_tile_{now.strftime('%Y%m%d')}_{days_ago}d_ago.tif"
+        from app.data_sources.sentinel_adapter import is_configured
+
+        # Get vessel position for bbox
+        vessel = db.query(VesselORM).filter(VesselORM.id == req.vessel_id).first()
+        lat, lng = 33.73, -118.26  # fallback
+        if vessel:
+            latest_pos = (
+                db.query(PositionReportORM)
+                .filter(PositionReportORM.vessel_id == vessel.id)
+                .order_by(PositionReportORM.timestamp.desc())
+                .first()
+            )
+            if latest_pos:
+                lat, lng = latest_pos.latitude, latest_pos.longitude
+
+        if is_configured():
+            hit, bbox, search_meta = _search_satellite_catalog(lat, lng)
+
+            if hit:
+                last_pass_notes = json.dumps({
+                    "last_pass": {
+                        "acquired": hit["datetime"],
+                        "satellite": hit["satellite"],
+                        "resolution_m": 10,
+                        "cloud_cover_pct": round(hit["cloud_cover"], 1) if hit["cloud_cover"] is not None else None,
+                        "bands": "True Color (B4/B3/B2)",
+                        "status": "delivered",
+                        "catalog_id": hit["id"],
+                    },
+                    "next_pass": {
+                        "eta_minutes": asset["eta_min"],
+                        "satellite": "Sentinel-2B",
+                        "expected_resolution_m": 10,
+                        "status": "tasking_accepted",
+                    },
+                    "source": "copernicus",
+                    "search": search_meta,
+                    "vessel_lat": lat,
+                    "vessel_lng": lng,
+                })
+                cloud = hit["cloud_cover"] or 10
+                last_pass_confidence = round(0.7 - (cloud / 100) * 0.3, 2)
+                last_pass_media = f"/api/satellite/verification-image/PLACEHOLDER?bbox={bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
+            else:
+                # No catalog hit yet. Stay on the real Copernicus path and let the
+                # Process API render the latest available mosaic for the area.
+                date_to = now.strftime("%Y-%m-%d")
+                date_from = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+                last_pass_notes = json.dumps({
+                    "last_pass": {
+                        "acquired": None,
+                        "satellite": "Sentinel-2",
+                        "resolution_m": 10,
+                        "bands": "True Color (B4/B3/B2)",
+                        "status": "catalog_empty",
+                        "note": "No recent catalog hit for the vessel area. Rendering the latest available Copernicus mosaic.",
+                    },
+                    "next_pass": {
+                        "eta_minutes": asset["eta_min"],
+                        "satellite": "Sentinel-2B",
+                        "expected_resolution_m": 10,
+                        "status": "tasking_accepted",
+                    },
+                    "source": "copernicus",
+                    "catalog_status": "empty",
+                    "search": search_meta,
+                    "vessel_lat": lat,
+                    "vessel_lng": lng,
+                })
+                last_pass_confidence = 0.45
+                last_pass_media = (
+                    f"/api/satellite/verification-image/PLACEHOLDER"
+                    f"?bbox={bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
+                    f"&date_from={date_from}&date_to={date_to}"
+                )
+        else:
+            # No CDSE configured — simulated
+            last_pass_notes = _simulated_satellite_notes(now, asset, lat, lng)
+            last_pass_confidence, last_pass_media = _simulated_satellite_media(now)
+
+    vr_id = str(uuid.uuid4())
+
+    # Fix up the media ref with the real verification ID
+    if last_pass_media and "PLACEHOLDER" in last_pass_media:
+        last_pass_media = last_pass_media.replace("PLACEHOLDER", vr_id)
 
     verification = VerificationRequestORM(
-        id=str(uuid.uuid4()),
+        id=vr_id,
         alert_id=req.alert_id,
         vessel_id=req.vessel_id,
         status="in_progress" if is_satellite else "assigned",
@@ -567,6 +675,42 @@ def create_verification_request(
     )
 
 
+def _simulated_satellite_notes(now: datetime, asset: dict, lat: float, lng: float) -> str:
+    """Generate simulated satellite notes when CDSE is not configured."""
+    import random
+    days_ago = random.randint(1, 4)
+    cloud_cover = random.randint(5, 35)
+    return json.dumps({
+        "last_pass": {
+            "acquired": (now - __import__("datetime").timedelta(days=days_ago)).isoformat() + "Z",
+            "satellite": "Sentinel-2A",
+            "resolution_m": 10,
+            "cloud_cover_pct": cloud_cover,
+            "bands": "True Color (B4/B3/B2)",
+            "status": "delivered",
+        },
+        "next_pass": {
+            "eta_minutes": asset["eta_min"],
+            "satellite": "Sentinel-2B",
+            "expected_resolution_m": 10,
+            "status": "tasking_accepted",
+        },
+        "source": "simulated",
+        "vessel_lat": lat,
+        "vessel_lng": lng,
+    })
+
+
+def _simulated_satellite_media(now: datetime) -> tuple[float, str]:
+    """Generate simulated confidence and media ref."""
+    import random
+    days_ago = random.randint(1, 4)
+    cloud_cover = random.randint(5, 35)
+    confidence = round(0.7 - (cloud_cover / 100) * 0.3, 2)
+    media = f"s2_tile_{now.strftime('%Y%m%d')}_{days_ago}d_ago.tif"
+    return confidence, media
+
+
 @router.get("/verification-requests/{request_id}", response_model=VerificationRequestSchema)
 def get_verification_request(request_id: str, db: Session = Depends(get_db)):
     """Get verification request status.
@@ -578,26 +722,81 @@ def get_verification_request(request_id: str, db: Session = Depends(get_db)):
     if not vr:
         raise HTTPException(status_code=404, detail="Verification request not found")
 
-    # Simulate satellite next-pass completion (20s after creation for demo)
+    # Satellite pass completion (20s delay for demo pacing)
     if vr.asset_type == "satellite" and vr.status == "in_progress":
         elapsed = (datetime.utcnow() - vr.created_at).total_seconds()
         if elapsed > 20:
-            import random
-            cloud_cover = random.randint(2, 15)
-            # Parse existing notes and update with new pass data
+            from app.data_sources.sentinel_adapter import is_configured
+
             existing = json.loads(vr.result_notes) if vr.result_notes else {}
-            existing["next_pass"] = {
-                "acquired": datetime.utcnow().isoformat() + "Z",
-                "satellite": "Sentinel-2B",
-                "resolution_m": 10,
-                "cloud_cover_pct": cloud_cover,
-                "bands": "True Color (B4/B3/B2)",
-                "status": "delivered",
-            }
+            is_real = existing.get("source") == "copernicus"
+
+            if is_real and is_configured():
+                lat = existing.get("vessel_lat", 33.73)
+                lng = existing.get("vessel_lng", -118.26)
+                hit, bbox, search_meta = _search_satellite_catalog(
+                    lat,
+                    lng,
+                    windows=[
+                        (0.05, 10, 30.0),
+                        (0.08, 21, 50.0),
+                        (0.12, 45, 80.0),
+                    ],
+                )
+
+                if hit:
+                    existing["next_pass"] = {
+                        "acquired": hit["datetime"],
+                        "satellite": hit["satellite"],
+                        "resolution_m": 10,
+                        "cloud_cover_pct": round(hit["cloud_cover"], 1) if hit["cloud_cover"] is not None else None,
+                        "bands": "True Color (B4/B3/B2)",
+                        "status": "delivered",
+                        "catalog_id": hit["id"],
+                    }
+                    existing["search"] = search_meta
+                    cloud = hit["cloud_cover"] or 5
+                    vr.result_confidence = round(0.85 - (cloud / 100) * 0.2, 2)
+                    bbox_str = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
+                    vr.result_media_ref = f"/api/satellite/verification-image/{vr.id}?bbox={bbox_str}"
+                else:
+                    # Catalog empty — keep the request on the real Copernicus path
+                    # and ask the Process API for the latest available mosaic.
+                    date_to = datetime.utcnow().strftime("%Y-%m-%d")
+                    date_from = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+                    bbox_str = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
+                    existing["next_pass"] = {
+                        "acquired": datetime.utcnow().isoformat() + "Z",
+                        "satellite": "Sentinel-2",
+                        "resolution_m": 10,
+                        "status": "delivered",
+                        "note": "No catalog item found for this window. Rendering the latest available Copernicus mosaic.",
+                    }
+                    existing["source"] = "copernicus"
+                    existing["catalog_status"] = "empty"
+                    existing["search"] = search_meta
+                    vr.result_confidence = 0.55
+                    vr.result_media_ref = (
+                        f"/api/satellite/verification-image/{vr.id}"
+                        f"?bbox={bbox_str}&date_from={date_from}&date_to={date_to}"
+                    )
+            else:
+                # Simulated completion
+                import random
+                cloud_cover = random.randint(2, 15)
+                existing["next_pass"] = {
+                    "acquired": datetime.utcnow().isoformat() + "Z",
+                    "satellite": "Sentinel-2B",
+                    "resolution_m": 10,
+                    "cloud_cover_pct": cloud_cover,
+                    "bands": "True Color (B4/B3/B2)",
+                    "status": "delivered",
+                }
+                vr.result_confidence = round(0.85 - (cloud_cover / 100) * 0.2, 2)
+                vr.result_media_ref = f"s2_tile_{datetime.utcnow().strftime('%Y%m%d')}_fresh.tif"
+
             vr.status = "completed"
             vr.result_notes = json.dumps(existing)
-            vr.result_confidence = round(0.85 - (cloud_cover / 100) * 0.2, 2)
-            vr.result_media_ref = f"s2_tile_{datetime.utcnow().strftime('%Y%m%d')}_fresh.tif"
             vr.updated_at = datetime.utcnow()
             db.commit()
 
@@ -742,6 +941,52 @@ def archive_stats():
 
 # ── Satellite Imagery ──────────────────────────────────
 
+@router.get("/satellite/verification-image/{request_id}")
+def satellite_verification_image(
+    request_id: str,
+    bbox: str = Query(..., description="west,south,east,north"),
+    width: int = Query(512, ge=64, le=2500),
+    height: int = Query(512, ge=64, le=2500),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Serve real Sentinel-2 imagery for a verification request.
+
+    Fetches from Copernicus Process API and returns a PNG.
+    """
+    from fastapi.responses import Response
+    from app.data_sources.sentinel_adapter import get_imagery_png, is_configured
+
+    if not is_configured():
+        raise HTTPException(status_code=503, detail="CDSE not configured")
+
+    # Verify the request exists
+    vr = db.query(VerificationRequestORM).filter(VerificationRequestORM.id == request_id).first()
+    if not vr:
+        raise HTTPException(status_code=404, detail="Verification request not found")
+
+    parts = [float(x) for x in bbox.split(",")]
+    if len(parts) != 4:
+        raise HTTPException(status_code=400, detail="bbox must be west,south,east,north")
+
+    png_bytes = get_imagery_png(
+        bbox=parts,
+        width=width,
+        height=height,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    if png_bytes is None:
+        raise HTTPException(status_code=502, detail="Failed to fetch imagery from Copernicus")
+
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
 @router.get("/satellite/info")
 def satellite_info():
     """Get Sentinel-2 satellite constellation info and tile URLs."""
@@ -750,6 +995,74 @@ def satellite_info():
         "tiles": get_sentinel2_tile_url(),
         "constellation": get_sentinel2_info(),
     }
+
+
+@router.get("/satellite/search")
+def satellite_search(
+    west: float = Query(..., description="Bounding box west longitude"),
+    south: float = Query(..., description="Bounding box south latitude"),
+    east: float = Query(..., description="Bounding box east longitude"),
+    north: float = Query(..., description="Bounding box north latitude"),
+    days_back: int = Query(60, ge=1, le=365),
+    max_cloud_cover: float = Query(60, ge=0, le=100),
+    limit: int = Query(5, ge=1, le=20),
+):
+    """Search for recent Sentinel-2 acquisitions over an area.
+
+    Returns a list of available images with dates, cloud cover, and geometry.
+    Requires CDSE_CLIENT_ID and CDSE_CLIENT_SECRET env vars.
+    """
+    from app.data_sources.sentinel_adapter import search_imagery, is_configured
+    if not is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Sentinel-2 not configured. Set CDSE_CLIENT_ID and CDSE_CLIENT_SECRET.",
+        )
+    results = search_imagery(
+        bbox=[west, south, east, north],
+        days_back=days_back,
+        max_cloud_cover=max_cloud_cover,
+        limit=limit,
+    )
+    return {"results": results, "count": len(results)}
+
+
+@router.get("/satellite/imagery")
+def satellite_imagery(
+    west: float = Query(..., description="Bounding box west longitude"),
+    south: float = Query(..., description="Bounding box south latitude"),
+    east: float = Query(..., description="Bounding box east longitude"),
+    north: float = Query(..., description="Bounding box north latitude"),
+    width: int = Query(512, ge=64, le=2500),
+    height: int = Query(512, ge=64, le=2500),
+    date_from: str | None = Query(None, description="Start date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="End date (YYYY-MM-DD)"),
+):
+    """Render Sentinel-2 true color imagery for a bounding box via Process API.
+
+    Returns a PNG image. Uses the most recent cloud-free mosaic.
+    Requires CDSE_CLIENT_ID and CDSE_CLIENT_SECRET env vars.
+    """
+    from fastapi.responses import Response
+    from app.data_sources.sentinel_adapter import get_imagery_png, is_configured
+
+    if not is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Sentinel-2 not configured. Set CDSE_CLIENT_ID and CDSE_CLIENT_SECRET.",
+        )
+
+    png_bytes = get_imagery_png(
+        bbox=[west, south, east, north],
+        width=width,
+        height=height,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    if png_bytes is None:
+        raise HTTPException(status_code=502, detail="Failed to fetch imagery from Copernicus")
+
+    return Response(content=png_bytes, media_type="image/png")
 
 
 @router.post("/archive/run")

@@ -13,6 +13,31 @@ interface VesselDetailProps {
   onSatelliteFootprint?: (footprint: SatelliteFootprint | null) => void;
 }
 
+function parseSatelliteMediaRef(resultMediaRef: string | null): {
+  imageSrc?: string;
+  bbox?: [number, number, number, number];
+} {
+  if (!resultMediaRef) return {};
+
+  try {
+    const url = new URL(resultMediaRef, "http://localhost");
+    const bboxParam = url.searchParams.get("bbox");
+    if (!bboxParam) return { imageSrc: resultMediaRef };
+
+    const parts = bboxParam.split(",").map((value) => Number.parseFloat(value));
+    if (parts.length !== 4 || parts.some((value) => Number.isNaN(value))) {
+      return { imageSrc: resultMediaRef };
+    }
+
+    return {
+      imageSrc: resultMediaRef,
+      bbox: [parts[0], parts[1], parts[2], parts[3]],
+    };
+  } catch {
+    return { imageSrc: resultMediaRef };
+  }
+}
+
 function actionStyle(action: string) {
   switch (action) {
     case "escalate": return "bg-red-500/10 text-red-400 border-red-500/25";
@@ -558,7 +583,7 @@ interface SatVrProps {
 
 function SatelliteVerificationResult({ verification, vesselPosition, vesselName, onFootprint }: SatVrProps) {
   const [liveVr, setLiveVr] = useState(verification);
-  const [footprintEmitted, setFootprintEmitted] = useState(false);
+  const [lastFootprintKey, setLastFootprintKey] = useState<string | null>(null);
 
   // Poll for satellite next-pass completion
   useEffect(() => {
@@ -575,17 +600,23 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
 
   // Emit satellite footprint on map when pass completes
   useEffect(() => {
-    if (liveVr.status === "completed" && !footprintEmitted && vesselPosition && onFootprint) {
+    const footprintKey = `${liveVr.id}:${liveVr.updated_at}:${liveVr.result_media_ref ?? ""}`;
+
+    if (liveVr.status === "completed" && vesselPosition && onFootprint && lastFootprintKey !== footprintKey) {
       const satData = liveVr.result_notes ? (() => { try { return JSON.parse(liveVr.result_notes); } catch { return null; } })() : null;
+      const media = satData?.source === "copernicus" ? parseSatelliteMediaRef(liveVr.result_media_ref) : {};
       onFootprint({
         center: [vesselPosition.longitude, vesselPosition.latitude],
-        satellite: satData?.next_pass?.satellite || "Sentinel-2B",
+        satellite: satData?.next_pass?.satellite || "Unknown",
         timestamp: satData?.next_pass?.acquired || new Date().toISOString(),
         vesselName,
+        imageSrc: media.imageSrc,
+        bbox: media.bbox,
+        renderToken: liveVr.updated_at,
       });
-      setFootprintEmitted(true);
+      setLastFootprintKey(footprintKey);
     }
-  }, [liveVr.status, footprintEmitted, vesselPosition, vesselName, onFootprint, liveVr.result_notes]);
+  }, [liveVr.id, liveVr.status, liveVr.updated_at, liveVr.result_media_ref, vesselPosition, vesselName, onFootprint, liveVr.result_notes, lastFootprintKey]);
 
   // Parse satellite-specific notes
   const satData = liveVr.result_notes ? (() => {
@@ -619,7 +650,15 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
       {/* Satellite: Last pass imagery */}
       {isSatellite && satData?.last_pass && vesselPosition && (
         <div className="bg-[#111827] rounded-lg border border-[#1a2235] overflow-hidden">
-          <SatThumbnail lat={vesselPosition.latitude} lng={vesselPosition.longitude} borderColor="border-slate-500/30" variant="old" />
+          <SatThumbnail
+            lat={vesselPosition.latitude}
+            lng={vesselPosition.longitude}
+            borderColor="border-slate-500/30"
+            variant="old"
+            imageSrc={satData.source === "copernicus" ? liveVr.result_media_ref ?? undefined : undefined}
+            isReal={satData.source === "copernicus"}
+            renderToken={liveVr.updated_at}
+          />
           <div className="p-3">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider">Last Available Imagery</span>
@@ -629,7 +668,7 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
               <div>
                 <span className="text-slate-600">Acquired</span>
                 <span className="text-slate-300 ml-1 font-mono">
-                  {new Date(satData.last_pass.acquired).toLocaleDateString()}
+                  {satData.last_pass.acquired ? new Date(satData.last_pass.acquired).toLocaleDateString() : "Pending catalog match"}
                 </span>
               </div>
               <div>
@@ -681,7 +720,9 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
             {isComplete && satData.next_pass.acquired && (
               <div>
                 <span className="text-slate-600">Acquired</span>
-                <span className="text-emerald-400 ml-1 font-mono">Just now</span>
+                <span className="text-emerald-400 ml-1 font-mono">
+                  {new Date(satData.next_pass.acquired).toLocaleDateString()}
+                </span>
               </div>
             )}
             <div>
@@ -708,18 +749,38 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
       {/* Imagery preview card — shown when pass completes */}
       {isSatellite && isComplete && vesselPosition && (
         <div className="bg-[#111827] rounded-lg border border-cyan-500/20 overflow-hidden">
-          <SatThumbnail lat={vesselPosition.latitude} lng={vesselPosition.longitude} borderColor="border-cyan-400/50" />
+          <SatThumbnail
+            lat={vesselPosition.latitude}
+            lng={vesselPosition.longitude}
+            borderColor="border-cyan-400/50"
+            imageSrc={satData?.source === "copernicus" ? liveVr.result_media_ref ?? undefined : undefined}
+            isReal={satData?.source === "copernicus"}
+            renderToken={liveVr.updated_at}
+          />
           <div className="p-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[9px] text-cyan-400 font-semibold uppercase tracking-wider">Satellite Imagery</span>
-              <span className="text-[9px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.5 rounded">new</span>
+              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+                satData?.source === "copernicus"
+                  ? "text-emerald-400 bg-emerald-500/10"
+                  : "text-amber-400 bg-amber-500/10"
+              }`}>
+                {satData?.source === "copernicus" ? "real" : "simulated"}
+              </span>
             </div>
             <p className="text-[10px] text-slate-400">
-              {satData?.next_pass?.satellite || "Sentinel-2B"} capture of vessel area. Footprint highlighted on map.
+              {satData?.next_pass?.satellite || "Unknown"} capture of vessel area. Footprint highlighted on map.
             </p>
-            <p className="text-[9px] text-slate-600 mt-1 font-mono">
-              ref: {liveVr.result_media_ref || "s2_tile.tif"}
-            </p>
+            {satData?.next_pass?.catalog_id && (
+              <p className="text-[9px] text-slate-600 mt-1 font-mono">
+                ref: {satData.next_pass.catalog_id}
+              </p>
+            )}
+            {!satData?.next_pass?.catalog_id && liveVr.result_media_ref && (
+              <p className="text-[9px] text-slate-600 mt-1 font-mono">
+                ref: {liveVr.result_media_ref}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -729,14 +790,15 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
 
 /**
  * Satellite imagery thumbnail.
- * - `variant="old"`: offset viewing angle + cloud haze + desaturated (older pass)
- * - `variant="fresh"`: centered + crisp + slight contrast boost (new acquisition)
+ * - When `imageSrc` is provided (real Sentinel-2 from backend), renders that image.
+ * - Otherwise falls back to tiled basemap imagery.
+ * - `variant="old"`: desaturated older pass
+ * - `variant="fresh"`: crisp new acquisition
  */
-function SatThumbnail({ lat, lng, borderColor = "border-cyan-400/50", variant = "fresh" }: {
-  lat: number; lng: number; borderColor?: string; variant?: "old" | "fresh";
+function SatThumbnail({ lat, lng, borderColor = "border-cyan-400/50", variant = "fresh", imageSrc, isReal = false, renderToken }: {
+  lat: number; lng: number; borderColor?: string; variant?: "old" | "fresh"; imageSrc?: string; isReal?: boolean; renderToken?: string;
 }) {
   const z = 18;
-  // Offset the "old" pass by 2 tiles so it shows a slightly different area
   const tileOffset = variant === "old" ? 2 : 0;
   const x = Math.floor(((lng + 180) / 360) * Math.pow(2, z)) + tileOffset;
   const latRad = (lat * Math.PI) / 180;
@@ -750,35 +812,62 @@ function SatThumbnail({ lat, lng, borderColor = "border-cyan-400/50", variant = 
   }
 
   const isOld = variant === "old";
+  const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api").replace(/\/api$/, "");
+  const realSrc = imageSrc
+    ? imageSrc.startsWith("/api/")
+      ? `${API_BASE}${imageSrc}`
+      : imageSrc
+    : undefined;
+  const refreshedRealSrc = realSrc && renderToken
+    ? `${realSrc}${realSrc.includes("?") ? "&" : "?"}v=${encodeURIComponent(renderToken)}`
+    : realSrc;
 
   return (
     <div className="h-44 relative overflow-hidden">
-      <div
-        className="absolute inset-0"
-        style={{
-          filter: isOld
-            ? "saturate(0.6) brightness(0.85) contrast(0.9)"
-            : "saturate(1.15) brightness(1.05) contrast(1.1)",
-        }}
-      >
-        {tiles.map((t, i) => (
+      {refreshedRealSrc ? (
+        /* Real Sentinel-2 imagery from Process API */
+        <div className="absolute inset-0">
           <img
-            key={i}
-            src={`https://mt${i % 4}.google.com/vt/lyrs=s&x=${t.tx}&y=${t.ty}&z=${z}`}
-            alt=""
-            className="absolute"
+            key={refreshedRealSrc}
+            src={refreshedRealSrc}
+            alt="Sentinel-2 imagery"
+            className="w-full h-full object-cover"
             style={{
-              width: "33.34%",
-              height: "33.34%",
-              left: `${(t.dx + 1) * 33.34}%`,
-              top: `${(t.dy + 1) * 33.34}%`,
-              objectFit: "cover",
+              filter: isOld
+                ? "saturate(0.6) brightness(0.85) contrast(0.9)"
+                : "saturate(1.15) brightness(1.05) contrast(1.1)",
             }}
           />
-        ))}
-      </div>
+        </div>
+      ) : (
+        /* Fallback: basemap tiles */
+        <div
+          className="absolute inset-0"
+          style={{
+            filter: isOld
+              ? "saturate(0.6) brightness(0.85) contrast(0.9)"
+              : "saturate(1.15) brightness(1.05) contrast(1.1)",
+          }}
+        >
+          {tiles.map((t, i) => (
+            <img
+              key={i}
+              src={`https://mt${i % 4}.google.com/vt/lyrs=s&x=${t.tx}&y=${t.ty}&z=${z}`}
+              alt=""
+              className="absolute"
+              style={{
+                width: "33.34%",
+                height: "33.34%",
+                left: `${(t.dx + 1) * 33.34}%`,
+                top: `${(t.dy + 1) * 33.34}%`,
+                objectFit: "cover",
+              }}
+            />
+          ))}
+        </div>
+      )}
       {/* Old pass: cloud haze overlay */}
-      {isOld && (
+      {isOld && !refreshedRealSrc && (
         <>
           <div className="absolute inset-0 bg-white/[0.08]" />
           <div className="absolute top-0 right-0 w-2/3 h-1/2 bg-gradient-to-bl from-white/[0.12] to-transparent rounded-bl-full" />
@@ -796,15 +885,24 @@ function SatThumbnail({ lat, lng, borderColor = "border-cyan-400/50", variant = 
       <div className={`absolute top-2 right-2 w-3 h-3 border-t border-r ${borderColor}`} />
       <div className={`absolute bottom-8 left-2 w-3 h-3 border-b border-l ${borderColor}`} />
       <div className={`absolute bottom-8 right-2 w-3 h-3 border-b border-r ${borderColor}`} />
-      {/* Timestamp label */}
+      {/* Source + freshness badge */}
       {isOld && (
         <div className="absolute top-2 right-4 text-[8px] font-mono text-white/40 bg-black/30 px-1.5 py-0.5 rounded">
           ARCHIVE
         </div>
       )}
       {!isOld && (
-        <div className="absolute top-2 right-4 text-[8px] font-mono text-cyan-300 bg-cyan-500/20 px-1.5 py-0.5 rounded">
-          FRESH
+        <div className="absolute top-2 right-4 flex items-center gap-1">
+          {isReal && (
+            <span className="text-[8px] font-mono text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded">
+              SENTINEL-2
+            </span>
+          )}
+          <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
+            isReal ? "text-emerald-300 bg-emerald-500/20" : "text-amber-300 bg-amber-500/20"
+          }`}>
+            {isReal ? "REAL" : "SIMULATED"}
+          </span>
         </div>
       )}
       <div className="absolute bottom-2 left-0 right-0 text-center">

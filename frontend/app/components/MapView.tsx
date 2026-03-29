@@ -11,6 +11,9 @@ export interface SatelliteFootprint {
   satellite: string;
   timestamp: string;
   vesselName: string;
+  imageSrc?: string;
+  bbox?: [number, number, number, number];
+  renderToken?: string;
 }
 
 interface MapViewProps {
@@ -38,6 +41,15 @@ function geofenceColor(zoneType: string): string {
     case "environmental": return "#8b5cf6";
     default: return "#64748b";
   }
+}
+
+function resolveSatelliteOverlayUrl(imageSrc?: string, renderToken?: string): string | null {
+  if (!imageSrc) return null;
+
+  const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api").replace(/\/api$/, "");
+  const absoluteUrl = imageSrc.startsWith("/api/") ? `${apiBase}${imageSrc}` : imageSrc;
+  if (!renderToken) return absoluteUrl;
+  return `${absoluteUrl}${absoluteUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(renderToken)}`;
 }
 
 /**
@@ -528,9 +540,11 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
     if (!map) return;
 
     // Clean up previous footprint
+    if (map.getLayer("sat-imagery")) map.removeLayer("sat-imagery");
     if (map.getLayer("sat-footprint-fill")) map.removeLayer("sat-footprint-fill");
     if (map.getLayer("sat-footprint-line")) map.removeLayer("sat-footprint-line");
     if (map.getLayer("sat-footprint-label")) map.removeLayer("sat-footprint-label");
+    if (map.getSource("sat-imagery")) map.removeSource("sat-imagery");
     if (map.getSource("sat-footprint")) map.removeSource("sat-footprint");
 
     if (!satelliteFootprint) return;
@@ -545,6 +559,33 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
       [lng - offset, lat + offset * 0.7],
       [lng - offset, lat - offset * 0.7],
     ];
+
+    if (satelliteFootprint.imageSrc && satelliteFootprint.bbox) {
+      const [west, south, east, north] = satelliteFootprint.bbox;
+      const overlayUrl = resolveSatelliteOverlayUrl(satelliteFootprint.imageSrc, satelliteFootprint.renderToken);
+      if (overlayUrl) {
+        map.addSource("sat-imagery", {
+          type: "image",
+          url: overlayUrl,
+          coordinates: [
+            [west, north],
+            [east, north],
+            [east, south],
+            [west, south],
+          ],
+        });
+
+        map.addLayer({
+          id: "sat-imagery",
+          type: "raster",
+          source: "sat-imagery",
+          paint: {
+            "raster-opacity": 0.9,
+            "raster-fade-duration": 0,
+          },
+        });
+      }
+    }
 
     map.addSource("sat-footprint", {
       type: "geojson",
@@ -592,7 +633,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
     }, 160);
 
     return () => clearInterval(pulseInterval);
-  }, [satelliteFootprint]);
+  }, [satelliteFootprint, baseMap]);
 
   return (
     <div className="absolute inset-0">
