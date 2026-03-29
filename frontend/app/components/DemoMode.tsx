@@ -297,13 +297,16 @@ function buildStages(): DemoStage[] {
         </div>
       ),
       callout2: (
-        <p className="mt-4 text-center text-lg text-cyan-300 leading-relaxed">
-          In a full deployment, a network of SeaPod cameras across a harbor
-          creates a complete optical vessel map — tracking every ship regardless
-          of AIS compliance. More cameras, more coverage, higher confidence.
+        <p className="mt-3 text-center text-sm text-cyan-300 leading-relaxed">
+          In a full deployment, a network of SeaPod cameras creates a
+          complete optical vessel map — tracking every ship regardless
+          of AIS compliance.
         </p>
       ),
       action: (props) => {
+        // Fly to LA Harbor and select the dark vessel
+        props.onSelectRegion("la_harbor");
+        props.onFlyTo([-118.25, 33.70], 14);
         props.onSelectVessel(props.darkOpticalId);
       },
     },
@@ -500,12 +503,12 @@ export default function DemoMode(props: DemoModeProps) {
 
   return (
     <div
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[680px] max-w-[calc(100vw-2rem)]"
+      className="absolute bottom-4 left-3 z-40 w-[420px]"
       style={{ transition: "opacity 300ms ease", opacity: visible ? 1 : 0 }}
     >
       {/* Overlay panel */}
       <div
-        className="relative max-h-[50vh] overflow-y-auto"
+        className="relative max-h-[55vh] overflow-y-auto"
         style={{
           transition: "transform 250ms ease, opacity 250ms ease",
           transform: transitioning ? "scale(0.97) translateY(8px)" : "scale(1) translateY(0)",
