@@ -237,66 +237,86 @@ function formatReportHTML(report: Record<string, unknown>): string {
 function RiskSparkline({ data }: { data: RiskHistoryPoint[] }) {
   if (data.length < 2) return null;
 
-  const w = 200;
-  const h = 32;
-  const pad = 2;
+  const w = 320;
+  const h = 56;
+  const padX = 1;
+  const padTop = 8;
+  const padBottom = 1;
+  const chartH = h - padTop - padBottom;
   const scores = data.map((d) => d.risk_score);
-  const minS = Math.max(0, Math.min(...scores) - 5);
-  const maxS = Math.min(100, Math.max(...scores) + 5);
-  const range = maxS - minS || 1;
 
+  // Always show 0-100 so threshold bands are stable
   const points = scores.map((s, i) => {
-    const x = pad + (i / (scores.length - 1)) * (w - pad * 2);
-    const y = h - pad - ((s - minS) / range) * (h - pad * 2);
-    return `${x},${y}`;
+    const x = padX + (i / (scores.length - 1)) * (w - padX * 2);
+    const y = padTop + (1 - s / 100) * chartH;
+    return { x, y };
   });
+
+  const polyline = points.map((p) => `${p.x},${p.y}`).join(" ");
+
+  // Gradient fill area
+  const firstPt = points[0];
+  const lastPt = points[points.length - 1];
+  const fillPath = `M${firstPt.x},${firstPt.y} ${points.map((p) => `L${p.x},${p.y}`).join(" ")} L${lastPt.x},${padTop + chartH} L${firstPt.x},${padTop + chartH} Z`;
 
   const last = scores[scores.length - 1];
   const first = scores[0];
   const trend = last - first;
-  const trendLabel =
-    trend > 5 ? "Escalating" : trend < -5 ? "De-escalating" : "Stable";
-  const trendColor =
-    trend > 5
-      ? "text-red-400"
-      : trend < -5
-        ? "text-green-400"
-        : "text-slate-500";
+  const trendLabel = trend > 5 ? "Escalating" : trend < -5 ? "De-escalating" : "Stable";
+  const trendIcon = trend > 5 ? "\u2197" : trend < -5 ? "\u2198" : "\u2192";
+  const trendColor = trend > 5 ? "text-red-400" : trend < -5 ? "text-green-400" : "text-slate-500";
 
-  const lineColor =
-    last >= RISK_THRESHOLDS.escalate
-      ? "#f87171"
-      : last >= RISK_THRESHOLDS.verify
-        ? "#fb923c"
-        : last >= RISK_THRESHOLDS.monitor
-          ? "#facc15"
-          : "#4ade80";
+  const lineColor = last >= RISK_THRESHOLDS.escalate ? "#f87171" : last >= RISK_THRESHOLDS.verify ? "#fb923c" : last >= RISK_THRESHOLDS.monitor ? "#facc15" : "#4ade80";
+  const fillOpacity = "0.08";
 
-  const lastX = pad + ((scores.length - 1) / (scores.length - 1)) * (w - pad * 2);
-  const lastY = h - pad - ((last - minS) / range) * (h - pad * 2);
+  // Threshold y positions
+  const threshY = (score: number) => padTop + (1 - score / 100) * chartH;
+
+  // Time labels
+  const firstTime = data[0]?.timestamp;
+  const lastTime = data[data.length - 1]?.timestamp;
+  const formatTime = (ts: string) => {
+    const d = new Date(ts.endsWith("Z") ? ts : ts + "Z");
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
 
   return (
-    <div className="flex items-center gap-2 mt-2">
-      <svg
-        width={w}
-        height={h}
-        viewBox={`0 0 ${w} ${h}`}
-        className="shrink-0"
-      >
-        <polyline
-          points={points.join(" ")}
-          fill="none"
-          stroke={lineColor}
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          opacity="0.8"
-        />
-        <circle cx={lastX} cy={lastY} r="2.5" fill={lineColor} />
-      </svg>
-      <span className={`text-[9px] font-medium uppercase tracking-wide ${trendColor}`}>
-        {trendLabel}
-      </span>
+    <div className="mt-3 bg-[#111827] rounded-lg border border-[#1a2235] overflow-hidden">
+      <div className="flex items-center justify-between px-3 pt-2 pb-1">
+        <span className="text-[9px] text-slate-600 uppercase tracking-wider font-medium">Risk Trend</span>
+        <span className={`text-[9px] font-semibold uppercase tracking-wide flex items-center gap-1 ${trendColor}`}>
+          <span>{trendIcon}</span> {trendLabel}
+        </span>
+      </div>
+      <div className="px-2 pb-1">
+        <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block">
+          <defs>
+            <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={lineColor} stopOpacity="0.15" />
+              <stop offset="100%" stopColor={lineColor} stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+          {/* Threshold zone bands */}
+          <rect x={0} y={threshY(100)} width={w} height={threshY(RISK_THRESHOLDS.escalate) - threshY(100)} fill="#ef4444" opacity="0.04" />
+          <rect x={0} y={threshY(RISK_THRESHOLDS.escalate)} width={w} height={threshY(RISK_THRESHOLDS.verify) - threshY(RISK_THRESHOLDS.escalate)} fill="#f97316" opacity="0.04" />
+          <rect x={0} y={threshY(RISK_THRESHOLDS.verify)} width={w} height={threshY(RISK_THRESHOLDS.monitor) - threshY(RISK_THRESHOLDS.verify)} fill="#f59e0b" opacity="0.04" />
+          {/* Threshold lines */}
+          <line x1={0} y1={threshY(RISK_THRESHOLDS.escalate)} x2={w} y2={threshY(RISK_THRESHOLDS.escalate)} stroke="#ef4444" strokeWidth="0.5" opacity="0.2" strokeDasharray="3,3" />
+          <line x1={0} y1={threshY(RISK_THRESHOLDS.verify)} x2={w} y2={threshY(RISK_THRESHOLDS.verify)} stroke="#f97316" strokeWidth="0.5" opacity="0.2" strokeDasharray="3,3" />
+          <line x1={0} y1={threshY(RISK_THRESHOLDS.monitor)} x2={w} y2={threshY(RISK_THRESHOLDS.monitor)} stroke="#f59e0b" strokeWidth="0.5" opacity="0.2" strokeDasharray="3,3" />
+          {/* Gradient fill */}
+          <path d={fillPath} fill="url(#sparkFill)" />
+          {/* Line */}
+          <polyline points={polyline} fill="none" stroke={lineColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          {/* Current value dot */}
+          <circle cx={lastPt.x} cy={lastPt.y} r="3" fill={lineColor} />
+          <circle cx={lastPt.x} cy={lastPt.y} r="5" fill={lineColor} opacity="0.2" />
+        </svg>
+      </div>
+      <div className="flex items-center justify-between px-3 pb-2">
+        <span className="text-[8px] text-slate-600 font-mono">{firstTime ? formatTime(firstTime) : ""}</span>
+        <span className="text-[8px] text-slate-600 font-mono">{lastTime ? formatTime(lastTime) : ""}</span>
+      </div>
     </div>
   );
 }
@@ -534,7 +554,7 @@ export default function VesselDetailPanel({
 
   const riskScore = vessel.risk_score ?? 0;
   const level = riskLevel(riskScore);
-  const action = level === "normal" ? "normal" : (vessel.recommended_action ?? "ignore");
+  const action = level === "normal" ? "normal" : (vessel.recommended_action ?? "normal");
 
   return (
     <div
@@ -550,21 +570,23 @@ export default function VesselDetailPanel({
               MMSI {vessel.mmsi}{vessel.imo ? ` / IMO ${vessel.imo}` : ""}
             </span>
           </div>
-          <button
-            onClick={handleExportReport}
-            disabled={exportLoading}
-            className="text-[10px] text-slate-500 hover:text-blue-400 uppercase tracking-wider transition-colors disabled:opacity-50 mr-2"
-          >
-            {exportLoading ? "..." : "Export"}
-          </button>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 rounded-lg bg-[#111827] border border-[#1a2235] flex items-center justify-center text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors"
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleExportReport}
+              disabled={exportLoading}
+              className="text-[10px] text-slate-500 hover:text-blue-400 uppercase tracking-wider transition-colors disabled:opacity-50"
+            >
+              {exportLoading ? "..." : "Export"}
+            </button>
+            <button
+              onClick={onClose}
+              className="w-7 h-7 rounded-lg bg-[#111827] border border-[#1a2235] flex items-center justify-center text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -606,7 +628,7 @@ export default function VesselDetailPanel({
         </div>
         {riskHistory.length >= 2 && <RiskSparkline data={riskHistory} />}
         {vessel.explanation && (
-          <p className="text-[11px] text-slate-400 leading-relaxed">{vessel.explanation}</p>
+          <p className="text-[11px] text-slate-400 leading-relaxed mt-3">{vessel.explanation}</p>
         )}
       </div>
 
@@ -694,106 +716,152 @@ export default function VesselDetailPanel({
       {/* Anomaly Signals */}
       {vessel.anomaly_signals.length > 0 && (
         <div className="px-4 py-3 border-b border-[#1a2235]">
-          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">
-            Signals ({vessel.anomaly_signals.length})
-          </h3>
-          <div className="space-y-1.5">
-            {vessel.anomaly_signals.map((signal, i) => (
-              <div key={i} className="bg-[#111827] rounded-md px-3 py-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-medium text-slate-300">
-                    {signalLabel(signal.anomaly_type)}
-                  </span>
-                  <span className={`text-[9px] font-semibold uppercase ${severityLabel(signal.severity).color}`}>
-                    {severityLabel(signal.severity).text}
-                  </span>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">
+              Anomaly Signals
+            </h3>
+            <span className="text-[9px] font-mono text-slate-600 bg-[#111827] px-2 py-0.5 rounded">
+              {vessel.anomaly_signals.length} detected
+            </span>
+          </div>
+          <div className="space-y-2">
+            {vessel.anomaly_signals.map((signal, i) => {
+              const sev = severityLabel(signal.severity);
+              const sevPct = Math.min(signal.severity * 100, 100);
+              const barColor = signal.severity >= 0.55 ? "bg-red-400" : signal.severity >= 0.35 ? "bg-orange-400" : signal.severity >= 0.2 ? "bg-yellow-400" : "bg-green-400";
+              return (
+                <div key={i} className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-medium text-slate-200">
+                      {signalLabel(signal.anomaly_type)}
+                    </span>
+                    <span className={`text-[9px] font-bold uppercase ${sev.color}`}>
+                      {sev.text}
+                    </span>
+                  </div>
+                  <div className="w-full bg-[#0d1320] rounded-full h-1 mb-2">
+                    <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${sevPct}%` }} />
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-relaxed">{signal.description}</p>
                 </div>
-                <p className="text-[10px] text-slate-500 leading-snug mt-1">{signal.description}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Vessel Info + Position */}
-      <div className="px-4 py-3 border-b border-[#1a2235]">
-        <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Vessel</h3>
-        <div className="grid grid-cols-3 gap-x-3 gap-y-2">
-          <InfoRow label="Type" value={vessel.vessel_type} />
-          <InfoRow label="Flag" value={vessel.flag_state} />
-          <InfoRow label="Callsign" value={vessel.callsign || "\u2014"} />
-          <InfoRow label="Length" value={vessel.length ? `${vessel.length}m` : "\u2014"} />
-          <InfoRow label="Beam" value={vessel.beam ? `${vessel.beam}m` : "\u2014"} />
-          <InfoRow label="Draft" value={vessel.draft ? `${vessel.draft}m` : "\u2014"} />
-          {vessel.destination && <InfoRow label="Dest" value={vessel.destination} />}
-          <InfoRow label="Deficiencies" value={String(vessel.inspection_deficiencies)} highlight={vessel.inspection_deficiencies > 0} />
-        </div>
-        {vessel.latest_position && (
-          <>
-            <div className="border-t border-[#1a2235]/50 mt-2.5 pt-2">
-              <div className="grid grid-cols-4 gap-x-3">
-                <InfoRow label="Lat" value={vessel.latest_position.latitude.toFixed(4)} />
-                <InfoRow label="Lon" value={vessel.latest_position.longitude.toFixed(4)} />
-                <InfoRow
-                  label="Speed"
-                  value={vessel.latest_position.speed_over_ground != null ? `${vessel.latest_position.speed_over_ground.toFixed(1)} kt` : "\u2014"}
-                />
-                <InfoRow
-                  label="Course"
-                  value={vessel.latest_position.course_over_ground != null ? `${vessel.latest_position.course_over_ground.toFixed(0)}\u00B0` : "\u2014"}
-                />
-              </div>
+      {/* Position & Kinematics */}
+      {vessel.latest_position && (
+        <div className="px-4 py-3 border-b border-[#1a2235]">
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Position & Kinematics</h3>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+              <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Latitude</span>
+              <span className="text-sm font-bold font-mono text-slate-200">{vessel.latest_position.latitude.toFixed(5)}</span>
             </div>
-          </>
+            <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+              <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Longitude</span>
+              <span className="text-sm font-bold font-mono text-slate-200">{vessel.latest_position.longitude.toFixed(5)}</span>
+            </div>
+            <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+              <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Speed</span>
+              <span className="text-sm font-bold font-mono text-blue-400">
+                {vessel.latest_position.speed_over_ground != null ? `${vessel.latest_position.speed_over_ground.toFixed(1)}` : "\u2014"}
+              </span>
+              {vessel.latest_position.speed_over_ground != null && <span className="text-[9px] text-slate-600 ml-1">kt</span>}
+            </div>
+            <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+              <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Course</span>
+              <span className="text-sm font-bold font-mono text-blue-400">
+                {vessel.latest_position.course_over_ground != null ? `${vessel.latest_position.course_over_ground.toFixed(0)}\u00B0` : "\u2014"}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vessel Identity */}
+      <div className="px-4 py-3 border-b border-[#1a2235]">
+        <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Vessel Identity</h3>
+        <div className="bg-[#111827] rounded-lg border border-[#1a2235] divide-y divide-[#1a2235]">
+          <div className="flex items-center justify-between px-3 py-2">
+            <span className="text-[10px] text-slate-500">Type</span>
+            <span className="text-[11px] font-medium text-slate-200">{vessel.vessel_type}</span>
+          </div>
+          <div className="flex items-center justify-between px-3 py-2">
+            <span className="text-[10px] text-slate-500">Flag</span>
+            <span className="text-[11px] font-medium text-slate-200">{vessel.flag_state}</span>
+          </div>
+          <div className="flex items-center justify-between px-3 py-2">
+            <span className="text-[10px] text-slate-500">Callsign</span>
+            <span className="text-[11px] font-medium font-mono text-slate-200">{vessel.callsign || "\u2014"}</span>
+          </div>
+          {vessel.destination && (
+            <div className="flex items-center justify-between px-3 py-2">
+              <span className="text-[10px] text-slate-500">Destination</span>
+              <span className="text-[11px] font-medium text-slate-200">{vessel.destination}</span>
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-2">
+          <div className="bg-[#111827] rounded-lg p-2.5 border border-[#1a2235] text-center">
+            <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-0.5">Length</span>
+            <span className="text-[12px] font-bold font-mono text-slate-300">{vessel.length ? `${vessel.length}m` : "\u2014"}</span>
+          </div>
+          <div className="bg-[#111827] rounded-lg p-2.5 border border-[#1a2235] text-center">
+            <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-0.5">Beam</span>
+            <span className="text-[12px] font-bold font-mono text-slate-300">{vessel.beam ? `${vessel.beam}m` : "\u2014"}</span>
+          </div>
+          <div className="bg-[#111827] rounded-lg p-2.5 border border-[#1a2235] text-center">
+            <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-0.5">Draft</span>
+            <span className="text-[12px] font-bold font-mono text-slate-300">{vessel.draft ? `${vessel.draft}m` : "\u2014"}</span>
+          </div>
+        </div>
+        {vessel.inspection_deficiencies > 0 && (
+          <div className="mt-2 bg-orange-500/10 rounded-lg p-2.5 border border-orange-500/20 flex items-center gap-2">
+            <span className="text-orange-400 text-[11px]">&#9888;</span>
+            <span className="text-[10px] text-orange-400 font-medium">{vessel.inspection_deficiencies} inspection {vessel.inspection_deficiencies === 1 ? "deficiency" : "deficiencies"}</span>
+          </div>
         )}
       </div>
 
-      {/* Current Position */}
-      {vessel.latest_position && (
-        <div className="p-5 border-b border-[#1a2235]">
-          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Current Position</h3>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-            <InfoRow label="Lat" value={vessel.latest_position.latitude.toFixed(5)} />
-            <InfoRow label="Lon" value={vessel.latest_position.longitude.toFixed(5)} />
-            <InfoRow
-              label="Speed"
-              value={vessel.latest_position.speed_over_ground != null ? `${vessel.latest_position.speed_over_ground.toFixed(1)} kt` : "\u2014"}
-            />
-            <InfoRow
-              label="Course"
-              value={vessel.latest_position.course_over_ground != null ? `${vessel.latest_position.course_over_ground.toFixed(0)}\u00B0` : "\u2014"}
-            />
-          </div>
-        </div>
-      )}
-
       {/* Weather Conditions */}
       {vessel.weather && (
-        <div className="p-5 border-b border-[#1a2235]">
+        <div className="px-4 py-3 border-b border-[#1a2235]">
           <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Weather Conditions</h3>
           {(vessel.weather.wind_speed_kt > 25 || vessel.weather.visibility_nm < 2) && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <div className="mb-3 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center gap-2">
+              <span className="text-amber-400 text-[11px]">&#9888;</span>
               <p className="text-[10px] text-amber-400 font-medium">
                 Adverse weather — detection thresholds adjusted
               </p>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-            <InfoRow
-              label="Wind"
-              value={`${vessel.weather.wind_speed_kt.toFixed(0)} kt ${vessel.weather.wind_direction}`}
-              highlight={vessel.weather.wind_speed_kt > 25}
-            />
-            <InfoRow
-              label="Visibility"
-              value={`${vessel.weather.visibility_nm.toFixed(1)} nm`}
-              highlight={vessel.weather.visibility_nm < 2}
-            />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+              <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Wind</span>
+              <span className={`text-sm font-bold font-mono ${vessel.weather.wind_speed_kt > 25 ? "text-amber-400" : "text-slate-200"}`}>
+                {vessel.weather.wind_speed_kt.toFixed(0)} kt
+              </span>
+              <span className="text-[9px] text-slate-500 block mt-0.5">{vessel.weather.wind_direction}</span>
+            </div>
+            <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+              <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Visibility</span>
+              <span className={`text-sm font-bold font-mono ${vessel.weather.visibility_nm < 2 ? "text-amber-400" : "text-emerald-400"}`}>
+                {vessel.weather.visibility_nm.toFixed(1)} nm
+              </span>
+            </div>
             {vessel.weather.temperature_f != null && (
-              <InfoRow label="Temp" value={`${vessel.weather.temperature_f}°F`} />
+              <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+                <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Temperature</span>
+                <span className="text-sm font-bold font-mono text-slate-200">{vessel.weather.temperature_f}°F</span>
+              </div>
             )}
             {vessel.weather.description && (
-              <InfoRow label="Forecast" value={vessel.weather.description} />
+              <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+                <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Forecast</span>
+                <span className="text-[11px] text-slate-300 leading-snug">{vessel.weather.description}</span>
+              </div>
             )}
           </div>
         </div>
@@ -1102,14 +1170,6 @@ export default function VesselDetailPanel({
   );
 }
 
-function InfoRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="flex flex-col">
-      <span className="text-[9px] text-slate-600 uppercase tracking-wider">{label}</span>
-      <span className={`text-[12px] font-mono ${highlight ? "text-orange-400" : "text-slate-300"}`}>{value}</span>
-    </div>
-  );
-}
 
 interface SatVrProps {
   verification: VerificationRequest;

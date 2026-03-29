@@ -309,7 +309,7 @@ export default function MapView({
       if (!vessel.latest_position) return;
 
       // Filter out normal vessels when toggle is active
-      const hasAnomaly = (vessel.risk_score ?? 0) >= RISK_THRESHOLDS.monitor || (vessel.recommended_action && vessel.recommended_action !== "ignore");
+      const hasAnomaly = (vessel.risk_score ?? 0) >= RISK_THRESHOLDS.monitor || (vessel.recommended_action && vessel.recommended_action !== "normal" && vessel.recommended_action !== "ignore");
       if (hideNormal && !hasAnomaly && vessel.id !== selectedVesselId) {
         // Remove marker if it exists
         if (markersRef.current[vessel.id]) {
