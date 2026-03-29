@@ -790,3 +790,161 @@ def get_vessel_profiles():
         "profiles": VESSEL_PROFILES,
         "default": _DEFAULT_PROFILE,
     }
+
+
+# ── Edge Node (SeaPod / Raspberry Pi) ─────────────────
+
+# Demo transformation constants
+_GPS_LAT_OFFSET = -20.0   # Philly -> Atlantic
+_GPS_LON_OFFSET = -40.0
+_RANGE_SCALE = 6173        # 1.2m pool -> ~4 nautical miles
+
+def _calculate_target_position(lat: float, lon: float, distance_nm: float, heading_deg: float) -> tuple[float, float]:
+    """Calculate target lat/lon from origin + distance + heading using great-circle math."""
+    import math
+    R = 3440.065  # Earth radius in nautical miles
+    d = distance_nm / R
+    brng = math.radians(heading_deg)
+    lat1 = math.radians(lat)
+    lon1 = math.radians(lon)
+    lat2 = math.asin(math.sin(lat1) * math.cos(d) + math.cos(lat1) * math.sin(d) * math.cos(brng))
+    lon2 = lon1 + math.atan2(math.sin(brng) * math.sin(d) * math.cos(lat1), math.cos(d) - math.sin(lat1) * math.sin(lat2))
+    return math.degrees(lat2), math.degrees(lon2)
+
+
+@router.post("/edge-node/alert")
+def receive_edge_node_alert(
+    payload: dict,
+    db: Session = Depends(get_db),
+):
+    """Receive a detection alert from a SeaPod edge node (Raspberry Pi).
+
+    Accepts JSON from the Pi, applies demo transformations (GPS transposition,
+    range scaling), creates vessel + alert records, and returns confirmation.
+    The frontend auto-picks this up on the next 5-second refresh cycle.
+    """
+    node_id = payload.get("node", "SeaPod_Unknown")
+    raw_lat = payload.get("lat", 0)
+    raw_lon = payload.get("lon", 0)
+    distance_m = payload.get("distance_m", 1.0)
+    heading_deg = payload.get("heading_deg", 0)
+    confidence = payload.get("confidence", 0.5)
+    target_name = payload.get("target", "unknown_object")
+    stream_url = payload.get("stream_url")
+
+    # Demo transformations
+    demo_lat = raw_lat + _GPS_LAT_OFFSET
+    demo_lon = raw_lon + _GPS_LON_OFFSET
+    scaled_distance_nm = (distance_m * _RANGE_SCALE) / 1852  # meters -> nm
+    target_lat, target_lon = _calculate_target_position(demo_lat, demo_lon, scaled_distance_nm, heading_deg)
+
+    now = datetime.utcnow()
+
+    # Upsert SeaPod node vessel
+    node_vessel_id = f"seapod-{node_id.lower().replace(' ', '-')}"
+    node_vessel = db.query(VesselORM).filter(VesselORM.id == node_vessel_id).first()
+    if not node_vessel:
+        node_vessel = VesselORM(
+            id=node_vessel_id,
+            mmsi=f"SEAPOD-{node_id.upper()}",
+            name=node_id,
+            vessel_type="sensor_node",
+            flag_state="United States",
+            region="atlantic_demo",
+        )
+        db.add(node_vessel)
+        db.flush()
+
+    # Update node position
+    node_pos = PositionReportORM(
+        vessel_id=node_vessel_id,
+        timestamp=now,
+        latitude=demo_lat,
+        longitude=demo_lon,
+        speed_over_ground=0,
+        course_over_ground=heading_deg,
+        heading=heading_deg,
+    )
+    db.add(node_pos)
+
+    # Upsert dark vessel (the detected target)
+    dark_vessel_id = f"dark-{node_id.lower()}-target"
+    dark_vessel = db.query(VesselORM).filter(VesselORM.id == dark_vessel_id).first()
+    if not dark_vessel:
+        dark_vessel = VesselORM(
+            id=dark_vessel_id,
+            mmsi=f"DARK-{node_id.upper()}",
+            name="UNIDENTIFIED DARK VESSEL",
+            vessel_type="other",
+            flag_state="Unknown",
+            region="atlantic_demo",
+            inspection_deficiencies=0,
+        )
+        db.add(dark_vessel)
+        db.flush()
+
+    # Update dark vessel position
+    dark_pos = PositionReportORM(
+        vessel_id=dark_vessel_id,
+        timestamp=now,
+        latitude=target_lat,
+        longitude=target_lon,
+        speed_over_ground=0,
+        course_over_ground=0,
+        heading=0,
+    )
+    db.add(dark_pos)
+
+    # Create/update alert for the dark vessel
+    risk_score = min(100, confidence * 100)
+    alert = db.query(AlertORM).filter(
+        AlertORM.vessel_id == dark_vessel_id, AlertORM.status == "active"
+    ).first()
+
+    signal = {
+        "anomaly_type": "dark_ship_optical",
+        "severity": confidence,
+        "description": f"Optical detection by {node_id}: unregistered vessel at {target_lat:.4f}N {abs(target_lon):.4f}W, range {scaled_distance_nm:.1f} nm, confidence {confidence*100:.0f}%. No AIS transponder detected.",
+        "details": {
+            "source": "edge_node",
+            "node_id": node_id,
+            "raw_distance_m": distance_m,
+            "scaled_distance_nm": round(scaled_distance_nm, 2),
+            "heading_deg": heading_deg,
+            "stream_url": stream_url,
+        },
+    }
+
+    explanation = (
+        f"OPTICAL DARK SHIP DETECTION by {node_id}. "
+        f"Unregistered vessel detected at range {scaled_distance_nm:.1f} nm, bearing {heading_deg}°. "
+        f"No AIS transponder signal. Detection confidence: {confidence*100:.0f}%. "
+        f"This vessel does not appear in any AIS database."
+    )
+
+    if alert:
+        alert.risk_score = risk_score
+        alert.explanation = explanation
+        alert.anomaly_signals_json = json.dumps([signal])
+    else:
+        alert = AlertORM(
+            id=str(uuid.uuid4()),
+            vessel_id=dark_vessel_id,
+            risk_score=risk_score,
+            recommended_action="escalate",
+            explanation=explanation,
+            anomaly_signals_json=json.dumps([signal]),
+        )
+        db.add(alert)
+
+    db.commit()
+
+    return {
+        "status": "alert_created",
+        "node": node_id,
+        "node_position": {"lat": demo_lat, "lon": demo_lon},
+        "target_position": {"lat": target_lat, "lon": target_lon},
+        "risk_score": risk_score,
+        "scaled_distance_nm": round(scaled_distance_nm, 2),
+        "alert_id": alert.id,
+    }

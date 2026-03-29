@@ -88,6 +88,13 @@ REGIONS: dict[str, dict] = {
         "zoom": 6.5,
         "description": "Eastern Mediterranean — Syria, Lebanon, Cyprus corridor",
     },
+    "atlantic_demo": {
+        "name": "Atlantic Demo Zone",
+        "bbox": [[15.0, -50.0], [25.0, -30.0]],
+        "center": [20.0, -40.0],
+        "zoom": 6,
+        "description": "SeaPod hardware demo — live edge node detection",
+    },
 }
 
 # Default: all regions

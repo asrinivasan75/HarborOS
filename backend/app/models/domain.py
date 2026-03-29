@@ -61,6 +61,7 @@ class AnomalyType(str, Enum):
     COLLISION_RISK = "collision_risk"          # CPA/TCPA close approach
     KINEMATIC_IMPLAUSIBILITY = "kinematic_implausibility"  # Impossible speed/position jump
     STATISTICAL_OUTLIER = "statistical_outlier"  # Behavior deviates from regional mean
+    DARK_SHIP_OPTICAL = "dark_ship_optical"      # Optical detection of vessel with no AIS
 
 
 # ── SQLAlchemy ORM Models ──────────────────────────────
