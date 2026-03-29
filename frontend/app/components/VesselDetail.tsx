@@ -631,15 +631,31 @@ export default function VesselDetailPanel({
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
                 <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Range</span>
-                <span className="text-lg font-bold font-mono text-cyan-400">{rawDist != null ? `${rawDist.toFixed(2)}m` : "—"}</span>
-                {scaledDist != null && <span className="text-[9px] text-slate-500 block mt-0.5">{scaledDist.toFixed(1)} nm scaled</span>}
+                {rawDist != null && rawDist !== 1.0 ? (
+                  <>
+                    <span className="text-lg font-bold font-mono text-cyan-400">{rawDist.toFixed(2)}m</span>
+                    {scaledDist != null && <span className="text-[9px] text-slate-500 block mt-0.5">{scaledDist.toFixed(1)} nm scaled</span>}
+                  </>
+                ) : (
+                  <span className="text-lg font-mono text-slate-600 flex items-center gap-1.5">
+                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500/50 animate-pulse" />
+                    scanning
+                  </span>
+                )}
               </div>
               <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
                 <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Velocity</span>
-                <span className={`text-lg font-bold font-mono ${vel && vel > 0.1 ? "text-amber-400" : "text-emerald-400"}`}>
-                  {vel != null ? vel.toFixed(3) : "0.000"}
-                </span>
-                <span className="text-[9px] text-slate-500 block mt-0.5">m/s</span>
+                {vel != null && vel > 0 ? (
+                  <>
+                    <span className={`text-lg font-bold font-mono ${vel > 0.1 ? "text-amber-400" : "text-emerald-400"}`}>{vel.toFixed(3)}</span>
+                    <span className="text-[9px] text-slate-500 block mt-0.5">m/s</span>
+                  </>
+                ) : (
+                  <span className="text-lg font-mono text-slate-600 flex items-center gap-1.5">
+                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500/50 animate-pulse" />
+                    scanning
+                  </span>
+                )}
               </div>
               <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
                 <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Bearing</span>
