@@ -462,6 +462,50 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
         )}
       </div>
 
+      {/* Edge Node Detection Stats */}
+      {(() => {
+        const edgeSignal = vessel.anomaly_signals.find(
+          (s) => s.details && (s.details as Record<string, unknown>).source === "edge_node"
+        );
+        if (!edgeSignal) return null;
+        const d = edgeSignal.details as Record<string, unknown>;
+        const rawDist = d.raw_distance_m as number | null;
+        const scaledDist = d.scaled_distance_nm as number | null;
+        const vel = d.velocity_ms as number | null;
+        const heading = d.heading_deg as number | null;
+        const nodeId = d.node_id as string;
+        return (
+          <div className="p-5 border-b border-[#1a2235]">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Edge Node Detection</h3>
+              <span className="text-[9px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded">{nodeId}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+                <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Range</span>
+                <span className="text-lg font-bold font-mono text-cyan-400">{rawDist != null ? `${rawDist.toFixed(2)}m` : "—"}</span>
+                {scaledDist != null && <span className="text-[9px] text-slate-500 block mt-0.5">{scaledDist.toFixed(1)} nm scaled</span>}
+              </div>
+              <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+                <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Velocity</span>
+                <span className={`text-lg font-bold font-mono ${vel && vel > 0.1 ? "text-amber-400" : "text-emerald-400"}`}>
+                  {vel != null ? `${vel.toFixed(2)}` : "—"}
+                </span>
+                {vel != null && <span className="text-[9px] text-slate-500 block mt-0.5">m/s</span>}
+              </div>
+              <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+                <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Bearing</span>
+                <span className="text-lg font-bold font-mono text-slate-300">{heading != null ? `${heading.toFixed(0)}°` : "—"}</span>
+              </div>
+              <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
+                <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Confidence</span>
+                <span className="text-lg font-bold font-mono text-blue-400">{(edgeSignal.severity * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Live Camera Feed — from SeaPod edge node */}
       {(() => {
         const streamSignal = vessel.anomaly_signals.find(

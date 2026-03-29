@@ -1333,6 +1333,7 @@ def receive_edge_node_alert(
     confidence = payload.get("confidence")
     target_name = payload.get("target") or "unknown_object"
     stream_url = payload.get("stream_url")
+    velocity_ms = payload.get("velocity_ms")
 
     # Handle nulls with safe defaults
     # GPS: if null, use default Philly coordinates (demo fallback)
@@ -1433,14 +1434,16 @@ def receive_edge_node_alert(
             "raw_distance_m": distance_m,
             "scaled_distance_nm": round(scaled_distance_nm, 2),
             "heading_deg": heading_deg,
+            "velocity_ms": velocity_ms,
             "stream_url": stream_url,
         },
     }
 
+    vel_text = f" Closing speed: {velocity_ms:.2f} m/s." if velocity_ms else ""
     explanation = (
         f"OPTICAL DARK SHIP DETECTION by {node_id}. "
-        f"Unregistered vessel detected at range {scaled_distance_nm:.1f} nm, bearing {heading_deg}°. "
-        f"No AIS transponder signal. Detection confidence: {confidence*100:.0f}%. "
+        f"Unregistered vessel detected at range {scaled_distance_nm:.1f} nm, bearing {heading_deg:.0f}°. "
+        f"No AIS transponder signal. Detection confidence: {confidence*100:.0f}%.{vel_text} "
         f"This vessel does not appear in any AIS database."
     )
 
