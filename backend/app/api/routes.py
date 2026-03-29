@@ -823,14 +823,36 @@ def receive_edge_node_alert(
     range scaling), creates vessel + alert records, and returns confirmation.
     The frontend auto-picks this up on the next 5-second refresh cycle.
     """
-    node_id = payload.get("node", "SeaPod_Unknown")
-    raw_lat = payload.get("lat", 0)
-    raw_lon = payload.get("lon", 0)
-    distance_m = payload.get("distance_m", 1.0)
-    heading_deg = payload.get("heading_deg", 0)
-    confidence = payload.get("confidence", 0.5)
-    target_name = payload.get("target", "unknown_object")
+    node_id = payload.get("node") or "SeaPod_Unknown"
+    raw_lat = payload.get("lat")
+    raw_lon = payload.get("lon")
+    distance_m = payload.get("distance_m")
+    heading_deg = payload.get("heading_deg")
+    confidence = payload.get("confidence")
+    target_name = payload.get("target") or "unknown_object"
     stream_url = payload.get("stream_url")
+
+    # Handle nulls with safe defaults
+    # GPS: if null, use default Philly coordinates (demo fallback)
+    if raw_lat is None or raw_lon is None:
+        raw_lat = raw_lat if raw_lat is not None else 39.9526
+        raw_lon = raw_lon if raw_lon is not None else -75.1652
+        gps_status = "no_fix"
+    else:
+        gps_status = "locked"
+
+    # Distance: if null, default to 1m (duck is close)
+    if distance_m is None:
+        distance_m = 1.0
+
+    # Heading: if null, randomize (no magnetometer)
+    if heading_deg is None:
+        import random
+        heading_deg = random.uniform(0, 360)
+
+    # Confidence: if null, use low default
+    if confidence is None:
+        confidence = 0.5
 
     # Demo transformations
     demo_lat = raw_lat + _GPS_LAT_OFFSET
@@ -942,9 +964,18 @@ def receive_edge_node_alert(
     return {
         "status": "alert_created",
         "node": node_id,
+        "gps_status": gps_status,
         "node_position": {"lat": demo_lat, "lon": demo_lon},
         "target_position": {"lat": target_lat, "lon": target_lon},
         "risk_score": risk_score,
         "scaled_distance_nm": round(scaled_distance_nm, 2),
+        "heading_used": round(heading_deg, 1),
         "alert_id": alert.id,
+        "nulls_received": {
+            "lat": payload.get("lat") is None,
+            "lon": payload.get("lon") is None,
+            "distance_m": payload.get("distance_m") is None,
+            "heading_deg": payload.get("heading_deg") is None,
+            "confidence": payload.get("confidence") is None,
+        },
     }
