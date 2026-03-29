@@ -313,6 +313,9 @@ export default function VesselDetailPanel({
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const lastRangeRef = useRef<number | null>(null);
+  const lastVelRef = useRef<number | null>(null);
+  const everDetectedRef = useRef(false);
   const [riskHistory, setRiskHistory] = useState<RiskHistoryPoint[]>([]);
   const [satelliteInfo, setSatelliteInfo] = useState<SatelliteInfoResponse | null>(null);
   const [imageryTarget, setImageryTarget] = useState<"vessel" | "focus">("vessel");
@@ -622,6 +625,18 @@ export default function VesselDetailPanel({
         const vel = d.velocity_ms as number | null;
         const heading = d.heading_deg as number | null;
         const nodeId = d.node_id as string;
+
+        // Track last known good values
+        const hasRealRange = rawDist != null && rawDist !== 1.0;
+        const hasRealVel = vel != null && vel > 0;
+        if (hasRealRange) { lastRangeRef.current = rawDist; everDetectedRef.current = true; }
+        if (hasRealVel) { lastVelRef.current = vel; everDetectedRef.current = true; }
+
+        const displayRange = hasRealRange ? rawDist : lastRangeRef.current;
+        const displayVel = hasRealVel ? vel : lastVelRef.current;
+        const rangeStale = !hasRealRange && lastRangeRef.current != null;
+        const velStale = !hasRealVel && lastVelRef.current != null;
+
         return (
           <div className="p-5 border-b border-[#1a2235]">
             <div className="flex items-center justify-between mb-3">
@@ -631,29 +646,30 @@ export default function VesselDetailPanel({
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
                 <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Range</span>
-                {rawDist != null && rawDist !== 1.0 ? (
+                {displayRange != null ? (
                   <>
-                    <span className="text-lg font-bold font-mono text-cyan-400">{rawDist.toFixed(2)}m</span>
-                    {scaledDist != null && <span className="text-[9px] text-slate-500 block mt-0.5">{scaledDist.toFixed(1)} nm scaled</span>}
+                    <span className={`text-lg font-bold font-mono ${rangeStale ? "text-cyan-400/50" : "text-cyan-400"}`}>{displayRange.toFixed(2)}m</span>
+                    {scaledDist != null && hasRealRange && <span className="text-[9px] text-slate-500 block mt-0.5">{scaledDist.toFixed(1)} nm scaled</span>}
+                    {rangeStale && <span className="text-[9px] text-slate-600 block mt-0.5">last known</span>}
                   </>
                 ) : (
-                  <span className="text-lg font-mono text-slate-600 flex items-center gap-1.5">
-                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500/50 animate-pulse" />
-                    scanning
+                  <span className="text-sm font-mono text-slate-600 flex items-center gap-1.5">
+                    <span className="inline-block w-2 h-2 rounded-full bg-blue-500/50 animate-pulse" />
+                    loading
                   </span>
                 )}
               </div>
               <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
                 <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Velocity</span>
-                {vel != null && vel > 0 ? (
+                {displayVel != null ? (
                   <>
-                    <span className={`text-lg font-bold font-mono ${vel > 0.1 ? "text-amber-400" : "text-emerald-400"}`}>{vel.toFixed(3)}</span>
-                    <span className="text-[9px] text-slate-500 block mt-0.5">m/s</span>
+                    <span className={`text-lg font-bold font-mono ${velStale ? "text-emerald-400/50" : displayVel > 0.1 ? "text-amber-400" : "text-emerald-400"}`}>{displayVel.toFixed(3)}</span>
+                    <span className="text-[9px] text-slate-500 block mt-0.5">{velStale ? "last known" : "m/s"}</span>
                   </>
                 ) : (
-                  <span className="text-lg font-mono text-slate-600 flex items-center gap-1.5">
-                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500/50 animate-pulse" />
-                    scanning
+                  <span className="text-sm font-mono text-slate-600 flex items-center gap-1.5">
+                    <span className="inline-block w-2 h-2 rounded-full bg-blue-500/50 animate-pulse" />
+                    loading
                   </span>
                 )}
               </div>
