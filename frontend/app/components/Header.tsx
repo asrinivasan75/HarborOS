@@ -8,11 +8,12 @@ interface HeaderProps {
   isLive: boolean;
   positionsIngested?: number;
   onToggleAnalytics: () => void;
+  analyticsOpen?: boolean;
   connectionOk?: boolean;
 }
 
 export default function Header({
-  alertCount, vesselCount, isLive, positionsIngested, onToggleAnalytics, connectionOk = true,
+  alertCount, vesselCount, isLive, positionsIngested, onToggleAnalytics, analyticsOpen, connectionOk = true,
 }: HeaderProps) {
   return (
     <header className="h-14 bg-[#0d1320] border-b border-[#1a2235] flex items-center justify-between px-5 shrink-0">
@@ -46,7 +47,11 @@ export default function Header({
 
         <button
           onClick={onToggleAnalytics}
-          className="text-[10px] text-slate-500 hover:text-blue-400 transition-colors font-medium tracking-wider uppercase px-2 py-1.5 rounded-lg hover:bg-blue-500/10"
+          className={`text-[10px] transition-colors font-medium tracking-wider uppercase px-2 py-1.5 rounded-lg ${
+            analyticsOpen
+              ? "text-blue-400 bg-blue-500/10"
+              : "text-slate-500 hover:text-blue-400 hover:bg-blue-500/10"
+          }`}
         >
           Analytics
         </button>
