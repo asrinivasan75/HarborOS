@@ -158,7 +158,15 @@ export default function Dashboard() {
     // Cancel any pending close animation
     if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; setDetailClosing(false); }
     // Close analytics if open
-    if (showAnalytics) { setShowAnalytics(false); setAnalyticsClosing(false); }
+    if (showAnalytics) {
+      setAnalyticsClosing(true);
+      if (analyticsCloseTimerRef.current) clearTimeout(analyticsCloseTimerRef.current);
+      analyticsCloseTimerRef.current = setTimeout(() => {
+        setShowAnalytics(false);
+        setAnalyticsClosing(false);
+        analyticsCloseTimerRef.current = null;
+      }, 200);
+    }
     setSatelliteOverlay(null);
     setMapClickFocus(null);
     try {
@@ -336,6 +344,7 @@ export default function Dashboard() {
         isLive={!!isLive}
         positionsIngested={ingestionStatus?.positions_ingested}
         onToggleAnalytics={handleToggleAnalytics}
+        analyticsOpen={showAnalytics}
         connectionOk={connectionOk}
       />
       <RegionSummary

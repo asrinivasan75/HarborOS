@@ -694,28 +694,39 @@ def get_detection_metrics(
 
 @router.get("/analytics/distribution", response_model=RiskDistributionSchema)
 def get_risk_distribution(db: Session = Depends(get_db)):
-    """Get histogram and action tier breakdown for all alerts."""
-    # Get all alerts
+    """Get histogram and action tier breakdown for all vessels and alerts."""
+    from collections import Counter
+
     alerts = db.query(AlertORM).all()
-    
+    all_vessels = db.query(VesselORM).all()
+
+    # Build set of vessel IDs that have an active alert
+    alerted_vessel_ids = {a.vessel_id for a in alerts if a.status == "active"}
+
     active_scores = [a.risk_score for a in alerts if a.status == "active"]
     resolved_scores = [a.risk_score for a in alerts if a.status == "resolved"]
+
+    # Count normal vessels (no active alert) — they have risk score 0
+    normal_vessel_count = sum(1 for v in all_vessels if v.id not in alerted_vessel_ids)
 
     # 1. Histogram (5-point bins)
     bins = {}
     for i in range(0, 100, 5):
         bins[i] = {"active": 0, "resolved": 0}
-        
+
+    # Normal vessels go in the 0-4 bin
+    bins[0]["active"] += normal_vessel_count
+
     for s in active_scores:
         b = int(s // 5) * 5
         if b in bins:
             bins[b]["active"] += 1
-            
+
     for s in resolved_scores:
         b = int(s // 5) * 5
         if b in bins:
             bins[b]["resolved"] += 1
-            
+
     histogram = [
         RiskHistogramBinSchema(
             bin_start=b,
@@ -724,23 +735,23 @@ def get_risk_distribution(db: Session = Depends(get_db)):
             count_resolved=bins[b]["resolved"]
         ) for b in sorted(bins.keys())
     ]
-    
-    # 2. Tiers (Active only)
+
+    # 2. Tiers
     tiers_data = {
         "escalate": {"count": 0, "signals": []},
         "verify":   {"count": 0, "signals": []},
         "monitor":  {"count": 0, "signals": []},
-        "ignore":   {"count": 0, "signals": []},
+        "normal":   {"count": normal_vessel_count, "signals": []},
     }
-    
+
     for a in alerts:
         if a.status != "active":
             continue
-            
+
         action = a.recommended_action
         if action not in tiers_data:
-            action = "ignore"
-            
+            action = "normal"
+
         tiers_data[action]["count"] += 1
         if a.anomaly_signals_json:
             try:
@@ -748,25 +759,22 @@ def get_risk_distribution(db: Session = Depends(get_db)):
                 tiers_data[action]["signals"].extend([s.get("anomaly_type") for s in sigs if s.get("anomaly_type")])
             except Exception:
                 pass
-                
+
     tiers = []
-    for action in ["escalate", "verify", "monitor", "ignore"]:
+    for action in ["escalate", "verify", "monitor", "normal"]:
         data = tiers_data[action]
         cnt = data["count"]
         sigs = data["signals"]
         avg = len(sigs) / cnt if cnt > 0 else 0.0
-        
-        # Top signals
-        from collections import Counter
         top = dict(Counter(sigs).most_common(3))
-        
+
         tiers.append(RiskTierSchema(
             action=action,
             count=cnt,
             avg_signals=round(avg, 1),
             top_signals=top
         ))
-        
+
     return RiskDistributionSchema(histogram=histogram, tiers=tiers)
 
 
