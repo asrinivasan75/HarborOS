@@ -512,18 +512,15 @@ export default function DemoMode(props: DemoModeProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[680px] max-w-[calc(100vw-2rem)]"
       style={{ transition: "opacity 300ms ease", opacity: visible ? 1 : 0 }}
     >
-      {/* Click-through backdrop — just for visual darkening */}
-      <div className="absolute inset-0 bg-black/30 pointer-events-none" />
-
       {/* Overlay panel */}
       <div
-        className="pointer-events-auto relative w-[700px] max-h-[85vh] overflow-y-auto"
+        className="relative max-h-[50vh] overflow-y-auto"
         style={{
           transition: "transform 250ms ease, opacity 250ms ease",
-          transform: transitioning ? "scale(0.96)" : "scale(1)",
+          transform: transitioning ? "scale(0.97) translateY(8px)" : "scale(1) translateY(0)",
           opacity: transitioning ? 0 : 1,
         }}
       >
@@ -534,15 +531,15 @@ export default function DemoMode(props: DemoModeProps) {
               : "border-white/10"
           }`}
         >
-          <div className="p-8 md:p-10">
+          <div className="px-6 py-5">
             {/* Close button */}
             <button
               onClick={handleClose}
-              className="absolute top-4 right-4 text-slate-600 hover:text-slate-300 transition-colors p-1"
+              className="absolute top-3 right-3 text-slate-600 hover:text-slate-300 transition-colors p-1"
             >
               <svg
-                width="18"
-                height="18"
+                width="16"
+                height="16"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -555,8 +552,8 @@ export default function DemoMode(props: DemoModeProps) {
 
             {/* Stage title */}
             <h2
-              className={`font-bold text-white mb-5 leading-tight ${
-                current.isStar ? "text-3xl" : "text-2xl"
+              className={`font-bold text-white mb-3 leading-tight ${
+                current.isStar ? "text-2xl" : "text-xl"
               }`}
             >
               {current.isStar && (
@@ -566,7 +563,7 @@ export default function DemoMode(props: DemoModeProps) {
             </h2>
 
             {/* Body */}
-            <div className="text-base text-slate-300 leading-relaxed">
+            <div className="text-sm text-slate-300 leading-relaxed">
               {current.body}
             </div>
 
@@ -578,7 +575,7 @@ export default function DemoMode(props: DemoModeProps) {
             {current.callout2}
 
             {/* Navigation */}
-            <div className="mt-8 flex items-center justify-between">
+            <div className="mt-5 flex items-center justify-between">
               <button
                 onClick={handlePrev}
                 disabled={step === 0}
