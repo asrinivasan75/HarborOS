@@ -129,7 +129,7 @@ _SIGNAL_LABELS = {
 MARSEC_DESCRIPTIONS = {
     "ignore": "Normal traffic — no action needed.",
     "monitor": "Track vessel and log activity.",
-    "verify": "Dispatch verification asset (camera, drone, or patrol) to confirm identity and intent.",
+    "verify": "Request satellite imagery to confirm identity, location, and intent.",
     "escalate": "Immediate interdiction response required. Consider area restriction and asset deployment.",
 }
 

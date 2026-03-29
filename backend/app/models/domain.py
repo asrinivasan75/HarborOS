@@ -3,7 +3,7 @@
 from __future__ import annotations
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 import json
 
 from pydantic import BaseModel, Field
@@ -178,13 +178,31 @@ class VerificationRequestORM(Base):
     alert_id = Column(String, ForeignKey("alerts.id"))
     vessel_id = Column(String, ForeignKey("vessels.id"))
     status = Column(String, default="queued")
-    asset_type = Column(String, nullable=True)  # camera, patrol_boat, drone
+    asset_type = Column(String, nullable=True)  # currently satellite-only
     asset_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
     result_confidence = Column(Float, nullable=True)
     result_notes = Column(Text, nullable=True)
     result_media_ref = Column(String, nullable=True)
+    satellite_source = Column(String, nullable=True)
+    catalog_status = Column(String, nullable=True)
+    request_lat = Column(Float, nullable=True)
+    request_lng = Column(Float, nullable=True)
+    bbox_west = Column(Float, nullable=True)
+    bbox_south = Column(Float, nullable=True)
+    bbox_east = Column(Float, nullable=True)
+    bbox_north = Column(Float, nullable=True)
+    search_spread_deg = Column(Float, nullable=True)
+    search_days_back = Column(Integer, nullable=True)
+    search_max_cloud_cover = Column(Float, nullable=True)
+    scene_acquired_at = Column(DateTime, nullable=True)
+    scene_satellite = Column(String, nullable=True)
+    scene_resolution_m = Column(Float, nullable=True)
+    scene_cloud_cover_pct = Column(Float, nullable=True)
+    scene_status = Column(String, nullable=True)
+    scene_catalog_id = Column(String, nullable=True)
+    scene_note = Column(Text, nullable=True)
 
 
 # ── Pydantic Schemas ───────────────────────────────────
@@ -340,6 +358,39 @@ class RiskDistributionSchema(BaseModel):
     tiers: list[RiskTierSchema]
 
 
+class SatelliteBBoxSchema(BaseModel):
+    west: float
+    south: float
+    east: float
+    north: float
+
+
+class SatelliteSearchSchema(BaseModel):
+    spread_deg: Optional[float] = None
+    days_back: Optional[int] = None
+    max_cloud_cover: Optional[float] = None
+
+
+class SatelliteSceneSchema(BaseModel):
+    acquired_at: Optional[datetime] = None
+    satellite: Optional[str] = None
+    resolution_m: Optional[float] = None
+    cloud_cover_pct: Optional[float] = None
+    status: Optional[str] = None
+    catalog_id: Optional[str] = None
+    note: Optional[str] = None
+
+
+class SatelliteVerificationSchema(BaseModel):
+    source: Optional[str] = None
+    catalog_status: Optional[str] = None
+    request_lat: Optional[float] = None
+    request_lng: Optional[float] = None
+    bbox: Optional[SatelliteBBoxSchema] = None
+    search: Optional[SatelliteSearchSchema] = None
+    scene: Optional[SatelliteSceneSchema] = None
+
+
 class VerificationRequestSchema(BaseModel):
     id: str
     alert_id: str
@@ -352,6 +403,7 @@ class VerificationRequestSchema(BaseModel):
     result_confidence: Optional[float] = None
     result_notes: Optional[str] = None
     result_media_ref: Optional[str] = None
+    satellite: Optional[SatelliteVerificationSchema] = None
 
     class Config:
         from_attributes = True
@@ -360,7 +412,9 @@ class VerificationRequestSchema(BaseModel):
 class VerificationRequestCreate(BaseModel):
     alert_id: str
     vessel_id: str
-    asset_type: Optional[str] = "camera"
+    asset_type: Literal["satellite"] = "satellite"
+    focus_lat: Optional[float] = None
+    focus_lng: Optional[float] = None
 
 
 class RiskAssessmentSchema(BaseModel):
