@@ -107,6 +107,13 @@ export default function Dashboard() {
         setAlerts(a.items);
         setAlertsTotal(a.total);
         if (status) setIngestionStatus(status);
+        // Auto-refresh selected vessel detail for live edge node data
+        setSelectedVessel((prev) => {
+          if (prev && (prev.id.startsWith("dark-") || prev.id.startsWith("seapod-"))) {
+            api.getVesselDetail(prev.id).then(setSelectedVessel).catch(() => {});
+          }
+          return prev;
+        });
         setConnectionOk(true);
       } catch {
         if (connectionOk) showToast("Connection lost — retrying...", "error");
