@@ -72,6 +72,10 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
             .all()
         )
 
+        # Skip edge node vessels — their alerts are managed by the edge endpoint
+        if vessel.id.startswith("dark-") or vessel.id.startswith("seapod-"):
+            continue
+
         if not positions:
             # Resolve any ghost alerts for vessels with no position data
             ghost_alert = (
