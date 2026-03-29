@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import type { VesselDetail as VesselDetailType, VerificationRequest } from "@/app/lib/api";
 import { api } from "@/app/lib/api";
 import { riskTextClass, riskLevel, RISK_THRESHOLDS } from "@/app/lib/risk";
@@ -852,6 +852,9 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
 function SatThumbnail({ lat, lng, borderColor = "border-cyan-400/50", variant = "fresh", imageSrc, isReal = false, renderToken }: {
   lat: number; lng: number; borderColor?: string; variant?: "old" | "fresh"; imageSrc?: string; isReal?: boolean; renderToken?: string;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
   const z = 18;
   const tileOffset = variant === "old" ? 2 : 0;
   const x = Math.floor(((lng + 180) / 360) * Math.pow(2, z)) + tileOffset;
@@ -876,94 +879,211 @@ function SatThumbnail({ lat, lng, borderColor = "border-cyan-400/50", variant = 
     ? `${realSrc}${realSrc.includes("?") ? "&" : "?"}v=${encodeURIComponent(renderToken)}`
     : realSrc;
 
+  const handleOpen = useCallback(() => {
+    setIsZoomed(false);
+    setZoomOrigin("50% 50%");
+    setIsExpanded(true);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setIsZoomed(false);
+    setZoomOrigin("50% 50%");
+    setIsExpanded(false);
+  }, []);
+
+  const handleExpandedDoubleClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+    const clamp = (value: number) => Math.min(100, Math.max(0, value));
+
+    setZoomOrigin(`${clamp(x)}% ${clamp(y)}%`);
+    setIsZoomed((current) => !current);
+  }, []);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsExpanded(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isExpanded]);
+
   return (
-    <div className="h-44 relative overflow-hidden">
-      {refreshedRealSrc ? (
-        /* Real Sentinel-2 imagery from Process API */
-        <div className="absolute inset-0">
-          <img
-            key={refreshedRealSrc}
-            src={refreshedRealSrc}
-            alt="Sentinel-2 imagery"
-            className="w-full h-full object-cover"
+    <>
+      <div
+        className="h-44 relative overflow-hidden cursor-zoom-in"
+        onDoubleClick={handleOpen}
+        title="Double-click to enlarge"
+      >
+        {refreshedRealSrc ? (
+          /* Real Sentinel-2 imagery from Process API */
+          <div className="absolute inset-0">
+            <img
+              key={refreshedRealSrc}
+              src={refreshedRealSrc}
+              alt="Sentinel-2 imagery"
+              className="w-full h-full object-cover"
+              style={{
+                filter: isOld
+                  ? "saturate(0.6) brightness(0.85) contrast(0.9)"
+                  : "saturate(1.15) brightness(1.05) contrast(1.1)",
+              }}
+            />
+          </div>
+        ) : (
+          /* Fallback: basemap tiles */
+          <div
+            className="absolute inset-0"
             style={{
               filter: isOld
                 ? "saturate(0.6) brightness(0.85) contrast(0.9)"
                 : "saturate(1.15) brightness(1.05) contrast(1.1)",
             }}
-          />
+          >
+            {tiles.map((t, i) => (
+              <img
+                key={i}
+                src={`https://mt${i % 4}.google.com/vt/lyrs=s&x=${t.tx}&y=${t.ty}&z=${z}`}
+                alt=""
+                className="absolute"
+                style={{
+                  width: "33.34%",
+                  height: "33.34%",
+                  left: `${(t.dx + 1) * 33.34}%`,
+                  top: `${(t.dy + 1) * 33.34}%`,
+                  objectFit: "cover",
+                }}
+              />
+            ))}
+          </div>
+        )}
+        {/* Old pass: cloud haze overlay */}
+        {isOld && !refreshedRealSrc && (
+          <>
+            <div className="absolute inset-0 bg-white/[0.08]" />
+            <div className="absolute top-0 right-0 w-2/3 h-1/2 bg-gradient-to-bl from-white/[0.12] to-transparent rounded-bl-full" />
+          </>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/80 via-transparent to-transparent" />
+        {/* Crosshair */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-12 h-px bg-cyan-400/50" />
+          <div className="absolute h-12 w-px bg-cyan-400/50" />
+          <div className="absolute w-5 h-5 border border-cyan-400/30 rounded-full" />
         </div>
-      ) : (
-        /* Fallback: basemap tiles */
-        <div
-          className="absolute inset-0"
-          style={{
-            filter: isOld
-              ? "saturate(0.6) brightness(0.85) contrast(0.9)"
-              : "saturate(1.15) brightness(1.05) contrast(1.1)",
-          }}
-        >
-          {tiles.map((t, i) => (
-            <img
-              key={i}
-              src={`https://mt${i % 4}.google.com/vt/lyrs=s&x=${t.tx}&y=${t.ty}&z=${z}`}
-              alt=""
-              className="absolute"
-              style={{
-                width: "33.34%",
-                height: "33.34%",
-                left: `${(t.dx + 1) * 33.34}%`,
-                top: `${(t.dy + 1) * 33.34}%`,
-                objectFit: "cover",
-              }}
-            />
-          ))}
-        </div>
-      )}
-      {/* Old pass: cloud haze overlay */}
-      {isOld && !refreshedRealSrc && (
-        <>
-          <div className="absolute inset-0 bg-white/[0.08]" />
-          <div className="absolute top-0 right-0 w-2/3 h-1/2 bg-gradient-to-bl from-white/[0.12] to-transparent rounded-bl-full" />
-        </>
-      )}
-      <div className="absolute inset-0 bg-gradient-to-t from-[#111827]/80 via-transparent to-transparent" />
-      {/* Crosshair */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="w-12 h-px bg-cyan-400/50" />
-        <div className="absolute h-12 w-px bg-cyan-400/50" />
-        <div className="absolute w-5 h-5 border border-cyan-400/30 rounded-full" />
-      </div>
-      {/* Corner brackets */}
-      <div className={`absolute top-2 left-2 w-3 h-3 border-t border-l ${borderColor}`} />
-      <div className={`absolute top-2 right-2 w-3 h-3 border-t border-r ${borderColor}`} />
-      <div className={`absolute bottom-8 left-2 w-3 h-3 border-b border-l ${borderColor}`} />
-      <div className={`absolute bottom-8 right-2 w-3 h-3 border-b border-r ${borderColor}`} />
-      {/* Source + freshness badge */}
-      {isOld && (
-        <div className="absolute top-2 right-4 text-[8px] font-mono text-white/40 bg-black/30 px-1.5 py-0.5 rounded">
-          ARCHIVE
-        </div>
-      )}
-      {!isOld && (
-        <div className="absolute top-2 right-4 flex items-center gap-1">
-          {isReal && (
-            <span className="text-[8px] font-mono text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded">
-              SENTINEL-2
+        {/* Corner brackets */}
+        <div className={`absolute top-2 left-2 w-3 h-3 border-t border-l ${borderColor}`} />
+        <div className={`absolute top-2 right-2 w-3 h-3 border-t border-r ${borderColor}`} />
+        <div className={`absolute bottom-8 left-2 w-3 h-3 border-b border-l ${borderColor}`} />
+        <div className={`absolute bottom-8 right-2 w-3 h-3 border-b border-r ${borderColor}`} />
+        {/* Source + freshness badge */}
+        {isOld && (
+          <div className="absolute top-2 right-4 text-[8px] font-mono text-white/40 bg-black/30 px-1.5 py-0.5 rounded">
+            ARCHIVE
+          </div>
+        )}
+        {!isOld && (
+          <div className="absolute top-2 right-4 flex items-center gap-1">
+            {isReal && (
+              <span className="text-[8px] font-mono text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded">
+                SENTINEL-2
+              </span>
+            )}
+            <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
+              isReal ? "text-emerald-300 bg-emerald-500/20" : "text-amber-300 bg-amber-500/20"
+            }`}>
+              {isReal ? "REAL" : "SIMULATED"}
             </span>
-          )}
-          <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
-            isReal ? "text-emerald-300 bg-emerald-500/20" : "text-amber-300 bg-amber-500/20"
-          }`}>
-            {isReal ? "REAL" : "SIMULATED"}
-          </span>
+          </div>
+        )}
+        <div className="absolute bottom-2 left-0 right-0 text-center">
+          <p className="text-[10px] text-cyan-300 font-mono drop-shadow-lg">
+            {lat.toFixed(4)}N, {Math.abs(lng).toFixed(4)}{lng >= 0 ? "E" : "W"}
+          </p>
+        </div>
+      </div>
+      {isExpanded && (
+        <div
+          className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8"
+          onClick={handleClose}
+        >
+          <div
+            className="relative w-full max-w-6xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={handleClose}
+              className="absolute right-3 top-3 z-10 rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] font-medium text-slate-200 hover:bg-black/75"
+            >
+              Close
+            </button>
+            <div className="relative h-[70vh] min-h-[320px] overflow-hidden rounded-xl border border-cyan-500/20 bg-black shadow-2xl shadow-black/50">
+              <div
+                className={`absolute inset-0 transition-transform duration-200 ease-out select-none ${
+                  isZoomed ? "cursor-zoom-out" : "cursor-zoom-in"
+                }`}
+                onDoubleClick={handleExpandedDoubleClick}
+                style={{
+                  transform: isZoomed ? "scale(2)" : "scale(1)",
+                  transformOrigin: zoomOrigin,
+                }}
+                title="Double-click to zoom"
+              >
+                {refreshedRealSrc ? (
+                  <img
+                    key={`${refreshedRealSrc}:expanded`}
+                    src={refreshedRealSrc}
+                    alt="Sentinel-2 imagery enlarged"
+                    className="w-full h-full object-contain"
+                    draggable={false}
+                    style={{
+                      filter: isOld
+                        ? "saturate(0.6) brightness(0.85) contrast(0.9)"
+                        : "saturate(1.15) brightness(1.05) contrast(1.1)",
+                    }}
+                  />
+                ) : (
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      filter: isOld
+                        ? "saturate(0.6) brightness(0.85) contrast(0.9)"
+                        : "saturate(1.15) brightness(1.05) contrast(1.1)",
+                    }}
+                  >
+                    {tiles.map((t, i) => (
+                      <img
+                        key={`expanded-${i}`}
+                        src={`https://mt${i % 4}.google.com/vt/lyrs=s&x=${t.tx}&y=${t.ty}&z=${z}`}
+                        alt=""
+                        className="absolute"
+                        draggable={false}
+                        style={{
+                          width: "33.34%",
+                          height: "33.34%",
+                          left: `${(t.dx + 1) * 33.34}%`,
+                          top: `${(t.dy + 1) * 33.34}%`,
+                          objectFit: "cover",
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <p className="mt-3 text-center text-[11px] text-slate-400">
+              Double-click the thumbnail to enlarge. Double-click the opened image to zoom in or out. Click outside or press Esc to close.
+            </p>
+          </div>
         </div>
       )}
-      <div className="absolute bottom-2 left-0 right-0 text-center">
-        <p className="text-[10px] text-cyan-300 font-mono drop-shadow-lg">
-          {lat.toFixed(4)}N, {Math.abs(lng).toFixed(4)}{lng >= 0 ? "E" : "W"}
-        </p>
-      </div>
-    </div>
+    </>
   );
 }
