@@ -125,10 +125,10 @@ _SIGNAL_LABELS = {
 }
 
 MARSEC_DESCRIPTIONS = {
-    "ignore": "Below MARSEC 1 — normal traffic, no action needed.",
-    "monitor": "MARSEC 1 — elevated awareness. Track vessel and log activity.",
-    "verify": "MARSEC 2 — dispatch verification asset (camera, drone, or patrol) to confirm identity and intent.",
-    "escalate": "MARSEC 3 — immediate interdiction response. Consider area restriction and asset deployment.",
+    "ignore": "Normal traffic — no action needed.",
+    "monitor": "Track vessel and log activity.",
+    "verify": "Dispatch verification asset (camera, drone, or patrol) to confirm identity and intent.",
+    "escalate": "Immediate interdiction response required. Consider area restriction and asset deployment.",
 }
 
 
