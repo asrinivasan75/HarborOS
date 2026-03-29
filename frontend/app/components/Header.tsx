@@ -1,21 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import type { Region } from "@/app/lib/api";
 
 interface HeaderProps {
   alertCount: number;
   vesselCount: number;
   isLive: boolean;
   positionsIngested?: number;
-  regions: Record<string, Region>;
-  activeRegion: string | null;
-  onRegionChange: (region: string | null) => void;
 }
 
 export default function Header({
   alertCount, vesselCount, isLive, positionsIngested,
-  regions, activeRegion, onRegionChange,
 }: HeaderProps) {
   return (
     <header className="h-14 bg-[#0d1320] border-b border-[#1a2235] flex items-center justify-between px-5 shrink-0">
@@ -36,18 +31,6 @@ export default function Header({
           </div>
         </div>
 
-        <div className="h-6 w-px bg-[#1a2235] mx-1" />
-
-        <select
-          value={activeRegion || "__all__"}
-          onChange={(e) => onRegionChange(e.target.value === "__all__" ? null : e.target.value)}
-          className="bg-[#111827] border border-[#1a2235] text-slate-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 cursor-pointer transition-colors hover:border-slate-600"
-        >
-          <option value="__all__">All Regions</option>
-          {Object.entries(regions).map(([key, r]) => (
-            <option key={key} value={key}>{r.name}</option>
-          ))}
-        </select>
       </div>
 
       <div className="flex items-center gap-1">

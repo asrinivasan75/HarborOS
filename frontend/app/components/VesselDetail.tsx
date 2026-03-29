@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import type { VesselDetail as VesselDetailType, VerificationRequest } from "@/app/lib/api";
 import { api } from "@/app/lib/api";
+import { riskTextClass, riskLevel, RISK_THRESHOLDS } from "@/app/lib/risk";
 
 import type { SatelliteFootprint } from "./MapView";
 
@@ -11,6 +12,7 @@ interface VesselDetailProps {
   alertId: string | null;
   onClose: () => void;
   onSatelliteFootprint?: (footprint: SatelliteFootprint | null) => void;
+  onAlertAction?: (alertId: string, newStatus: string) => void;
 }
 
 function actionStyle(action: string) {
@@ -18,21 +20,44 @@ function actionStyle(action: string) {
     case "escalate": return "bg-red-500/10 text-red-400 border-red-500/25";
     case "verify": return "bg-orange-500/10 text-orange-400 border-orange-500/25";
     case "monitor": return "bg-yellow-500/10 text-yellow-400 border-yellow-500/25";
-    default: return "bg-green-500/10 text-green-400 border-green-500/25";
+    case "normal": return "bg-green-500/10 text-green-400 border-green-500/25";
+    default: return "bg-slate-500/10 text-slate-400 border-slate-500/25";
   }
 }
 
-function riskColor(score: number): string {
-  if (score >= 70) return "text-red-400";
-  if (score >= 45) return "text-orange-400";
-  if (score >= 25) return "text-yellow-400";
-  return "text-green-400";
-}
+const riskColor = riskTextClass;
 
 function severityBarColor(severity: number): string {
-  if (severity >= 0.7) return "bg-red-400";
-  if (severity >= 0.4) return "bg-orange-400";
-  return "bg-yellow-400";
+  if (severity >= 0.55) return "bg-red-400";
+  if (severity >= 0.35) return "bg-orange-400";
+  if (severity >= 0.2) return "bg-yellow-400";
+  return "bg-green-400";
+}
+
+function severityLabel(severity: number): { text: string; color: string } {
+  if (severity >= 0.55) return { text: "Critical", color: "text-red-400" };
+  if (severity >= 0.35) return { text: "High", color: "text-orange-400" };
+  if (severity >= 0.2) return { text: "Moderate", color: "text-yellow-400" };
+  return { text: "Low", color: "text-green-400" };
+}
+
+const SIGNAL_LABELS: Record<string, string> = {
+  ais_gap: "AIS Dark Period",
+  kinematic_implausibility: "Position Spoofing",
+  geofence_breach: "Restricted Zone Breach",
+  type_mismatch: "Identity Mismatch",
+  route_deviation: "Route Deviation",
+  loitering: "Loitering",
+  zone_lingering: "Zone Lingering",
+  speed_anomaly: "Speed Anomaly",
+  heading_anomaly: "Course Anomaly",
+  statistical_outlier: "Regional Outlier",
+  collision_risk: "COLREGS Non-Compliance",
+  dark_ship_optical: "Dark Ship (Optical)",
+};
+
+function signalLabel(type: string): string {
+  return SIGNAL_LABELS[type] ?? type.replace(/_/g, " ");
 }
 
 function formatReportHTML(report: Record<string, unknown>): string {
@@ -45,7 +70,7 @@ function formatReportHTML(report: Record<string, unknown>): string {
   const verifications = report.verification_requests as Record<string, unknown>[];
 
   const riskScore = risk.score as number;
-  const riskColor = riskScore >= 70 ? "#ef4444" : riskScore >= 45 ? "#f97316" : riskScore >= 25 ? "#f59e0b" : "#22c55e";
+  const riskColor = riskScore >= RISK_THRESHOLDS.escalate ? "#ef4444" : riskScore >= RISK_THRESHOLDS.verify ? "#f97316" : riskScore >= RISK_THRESHOLDS.monitor ? "#f59e0b" : "#22c55e";
 
   const css = `
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -115,12 +140,15 @@ function formatReportHTML(report: Record<string, unknown>): string {
   if (signals?.length) {
     html += `<h2>Anomaly Signals (${signals.length})</h2>`;
     for (const s of signals) {
-      const sev = (s.severity as number) * 100;
-      const sevColor = sev >= 70 ? "#ef4444" : sev >= 40 ? "#f97316" : "#f59e0b";
+      const sev = s.severity as number;
+      const sevLabel = sev >= 0.55 ? "CRITICAL" : sev >= 0.35 ? "HIGH" : sev >= 0.2 ? "MODERATE" : "LOW";
+      const sevColor = sev >= 0.55 ? "#ef4444" : sev >= 0.35 ? "#f97316" : sev >= 0.2 ? "#f59e0b" : "#22c55e";
+      const type = s.anomaly_type as string;
+      const label = ({"ais_gap":"AIS Dark Period","kinematic_implausibility":"Position Spoofing","geofence_breach":"Restricted Zone Breach","type_mismatch":"Identity Mismatch","collision_risk":"COLREGS Non-Compliance","loitering":"Loitering","speed_anomaly":"Speed Anomaly","heading_anomaly":"Course Anomaly","route_deviation":"Route Deviation","zone_lingering":"Zone Lingering","statistical_outlier":"Regional Outlier","dark_ship_optical":"Dark Ship (Optical)"} as Record<string,string>)[type] ?? type.replace(/_/g, " ");
       html += `<div class="signal">
         <div class="signal-header">
-          <span class="signal-type">${(s.anomaly_type as string).replace(/_/g, " ")}</span>
-          <span class="signal-severity" style="color:${sevColor}">${sev.toFixed(0)}%</span>
+          <span class="signal-type">${label}</span>
+          <span class="signal-severity" style="color:${sevColor}">${sevLabel}</span>
         </div>
         <div class="signal-desc">${s.description}</div>
       </div>`;
@@ -164,7 +192,7 @@ function formatReportHTML(report: Record<string, unknown>): string {
   return html;
 }
 
-export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint }: VesselDetailProps) {
+export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint, onAlertAction }: VesselDetailProps) {
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -211,12 +239,13 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
     try {
       const res = await api.alertAction(alertId, action);
       setAlertStatus(res.status);
+      onAlertAction?.(alertId, res.status);
     } catch (e) {
       console.error("Alert action failed:", e);
     } finally {
       setActionLoading(null);
     }
-  }, [alertId]);
+  }, [alertId, onAlertAction]);
 
   const handleSaveNote = useCallback(async () => {
     if (!alertId || !noteText.trim()) return;
@@ -261,7 +290,8 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
   };
 
   const riskScore = vessel.risk_score ?? 0;
-  const action = vessel.recommended_action ?? "ignore";
+  const level = riskLevel(riskScore);
+  const action = level === "normal" ? "normal" : (vessel.recommended_action ?? "ignore");
 
   return (
     <div className="w-[400px] bg-[#0d1320] border-l border-[#1a2235] flex flex-col shrink-0 overflow-y-auto">
@@ -316,7 +346,7 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
         <div className="w-full bg-[#111827] rounded-full h-1.5 overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-500 ${
-              riskScore >= 70 ? "bg-red-400" : riskScore >= 45 ? "bg-orange-400" : riskScore >= 25 ? "bg-yellow-400" : "bg-green-400"
+              riskScore >= RISK_THRESHOLDS.escalate ? "bg-red-400" : riskScore >= RISK_THRESHOLDS.verify ? "bg-orange-400" : riskScore >= RISK_THRESHOLDS.monitor ? "bg-yellow-400" : "bg-green-400"
             }`}
             style={{ width: `${riskScore}%` }}
           />
@@ -337,12 +367,10 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
               <div key={i} className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] font-medium text-slate-300 uppercase tracking-wide">
-                    {signal.anomaly_type.replace(/_/g, " ")}
+                    {signalLabel(signal.anomaly_type)}
                   </span>
-                  <span className={`text-[11px] font-mono font-semibold ${
-                    signal.severity >= 0.7 ? "text-red-400" : signal.severity >= 0.4 ? "text-orange-400" : "text-yellow-400"
-                  }`}>
-                    {(signal.severity * 100).toFixed(0)}%
+                  <span className={`text-[10px] font-semibold uppercase tracking-wide ${severityLabel(signal.severity).color}`}>
+                    {severityLabel(signal.severity).text}
                   </span>
                 </div>
                 <div className="w-full bg-[#0d1320] rounded-full h-1 mb-2">
@@ -393,7 +421,7 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
       )}
 
       {/* Verification Action */}
-      {riskScore >= 45 && (
+      {riskScore >= RISK_THRESHOLDS.verify && (
         <div className="p-5">
           <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Verification</h3>
           {verification ? (

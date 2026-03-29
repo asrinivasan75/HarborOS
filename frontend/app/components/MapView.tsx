@@ -5,6 +5,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { api } from "@/app/lib/api";
 import type { Vessel, Geofence } from "@/app/lib/api";
+import { riskHex, RISK_THRESHOLDS } from "@/app/lib/risk";
 
 export interface SatelliteFootprint {
   center: [number, number]; // [lng, lat]
@@ -22,12 +23,7 @@ interface MapViewProps {
   satelliteFootprint?: SatelliteFootprint | null;
 }
 
-function vesselColor(score: number | null): string {
-  if (!score || score < 25) return "#22c55e";
-  if (score < 45) return "#f59e0b";
-  if (score < 70) return "#f97316";
-  return "#ef4444";
-}
+const vesselColor = riskHex;
 
 function geofenceColor(zoneType: string): string {
   switch (zoneType) {
@@ -206,6 +202,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
   const markersRef = useRef<Record<string, { marker: maplibregl.Marker; el: HTMLDivElement }>>({});
   const [baseMap, setBaseMap] = useState<BaseMap>("satellite");
   const [heatmap, setHeatmap] = useState(false);
+  const [hideNormal, setHideNormal] = useState(false);
 
   const updateMarkers = useCallback(() => {
     const map = mapRef.current;
@@ -215,12 +212,24 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
 
     vessels.forEach((vessel) => {
       if (!vessel.latest_position) return;
+
+      // Filter out normal vessels when toggle is active
+      const hasAnomaly = (vessel.risk_score ?? 0) >= RISK_THRESHOLDS.monitor || (vessel.recommended_action && vessel.recommended_action !== "ignore");
+      if (hideNormal && !hasAnomaly && vessel.id !== selectedVesselId) {
+        // Remove marker if it exists
+        if (markersRef.current[vessel.id]) {
+          markersRef.current[vessel.id].marker.remove();
+          delete markersRef.current[vessel.id];
+        }
+        return;
+      }
+
       currentVesselIds.add(vessel.id);
 
       const score = vessel.risk_score ?? 0;
       const color = vesselColor(vessel.risk_score);
       const isSelected = vessel.id === selectedVesselId;
-      const h = isSelected ? 42 : score >= 45 ? 34 : 26;
+      const h = isSelected ? 42 : score >= RISK_THRESHOLDS.verify ? 34 : 26;
       const course = vessel.latest_position.course_over_ground ?? 0;
       const strokeColor = isSelected ? "#cbd5e1" : "rgba(0,0,0,0.7)";
       const strokeWidth = isSelected ? 1.2 : 0.6;
@@ -250,11 +259,11 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
 
       el.style.width = `${w}px`;
       el.style.height = `${h}px`;
-      const glowSize = score >= 70 ? 8 : score >= 45 ? 5 : 3;
-      const glowAlpha = score >= 45 ? "cc" : "80";
+      const glowSize = score >= RISK_THRESHOLDS.escalate ? 8 : score >= RISK_THRESHOLDS.verify ? 5 : 3;
+      const glowAlpha = score >= RISK_THRESHOLDS.verify ? "cc" : "80";
 
       el.innerHTML = `
-      <div style="width:100%;height:100%;${score >= 70 ? 'animation:pulse 2s infinite;' : ''}">
+      <div style="width:100%;height:100%;${score >= RISK_THRESHOLDS.escalate ? 'animation:pulse 2s infinite;' : ''}">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${w}" height="${h}"
              style="transform:rotate(${course}deg);transition:transform 0.5s ease;filter:drop-shadow(0 0 ${glowSize}px ${color}${glowAlpha})">
           <path d="${hull}" fill="${color}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linejoin="round"/>
@@ -273,7 +282,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
         delete markersRef.current[vesselId];
       }
     });
-  }, [vessels, selectedVesselId, onSelectVessel]);
+  }, [vessels, selectedVesselId, onSelectVessel, hideNormal]);
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
@@ -606,6 +615,16 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
           <LegendItem color="#f97316" label="Verify" />
           <LegendItem color="#ef4444" label="Escalate" />
         </div>
+        <button
+          onClick={() => setHideNormal(!hideNormal)}
+          className={`mt-3 w-full text-[9px] font-semibold uppercase tracking-wider px-2 py-1.5 rounded-md transition-all ${
+            hideNormal
+              ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+              : "text-slate-500 hover:text-slate-400 border border-[#1a2235] hover:bg-[#111827]"
+          }`}
+        >
+          {hideNormal ? "Show all vessels" : "Hide normal vessels"}
+        </button>
         <div className="border-t border-[#1a2235] mt-3 pt-3 text-[9px] text-slate-500 uppercase tracking-[0.15em] mb-2.5 font-semibold">
           Zones
         </div>

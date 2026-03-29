@@ -11,7 +11,7 @@ import RegionSummary from "@/app/components/RegionSummary";
 import Timeline from "@/app/components/Timeline";
 import type { SatelliteFootprint } from "@/app/components/MapView";
 import { api } from "@/app/lib/api";
-import type { Vessel, VesselDetail, Alert, Geofence, IngestionStatus, Region } from "@/app/lib/api";
+import type { Vessel, VesselDetail, Alert, Geofence, IngestionStatus, Region, TimePositionEntry } from "@/app/lib/api";
 
 const REFRESH_INTERVAL_MS = 5000;
 
@@ -31,6 +31,8 @@ export default function Dashboard() {
   const [mapTarget, setMapTarget] = useState<{ center: [number, number]; zoom: number; _t?: number } | null>(null);
   const [satelliteFootprint, setSatelliteFootprint] = useState<SatelliteFootprint | null>(null);
   const [comparedVessels, setComparedVessels] = useState<VesselDetail[]>([]);
+  const [timeFilter, setTimeFilter] = useState<string | null>(null);
+  const liveVesselsRef = useRef<Vessel[]>([]);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load initial data
@@ -44,6 +46,7 @@ export default function Dashboard() {
           api.getRegions(),
         ]);
         setVessels(v.items);
+        liveVesselsRef.current = v.items;
         setAlerts(a.items);
         setAlertsTotal(a.total);
         setGeofences(g);
@@ -67,6 +70,7 @@ export default function Dashboard() {
     if (refreshTimer.current) clearInterval(refreshTimer.current);
 
     refreshTimer.current = setInterval(async () => {
+      if (timeFilter) return; // Pause live refresh during replay
       try {
         const regionParam = activeRegion || undefined;
         const [v, a, status] = await Promise.all([
@@ -75,6 +79,7 @@ export default function Dashboard() {
           api.getIngestionStatus().catch(() => null),
         ]);
         setVessels(v.items);
+        liveVesselsRef.current = v.items;
         setAlerts(a.items);
         setAlertsTotal(a.total);
         if (status) setIngestionStatus(status);
@@ -167,6 +172,19 @@ export default function Dashboard() {
     setSatelliteFootprint(null);
   }, []);
 
+  const handleAlertAction = useCallback(async (alertId: string, newStatus: string) => {
+    // Update the alert in-place so the feed reflects the change immediately
+    setAlerts((prev) =>
+      prev.map((a) => a.id === alertId ? { ...a, status: newStatus } : a)
+    );
+    // If dismissed, close the detail panel
+    if (newStatus === "dismissed") {
+      setSelectedVessel(null);
+      setSelectedAlertId(null);
+      setSatelliteFootprint(null);
+    }
+  }, []);
+
   const handleCompareVessel = useCallback(async (alert: Alert) => {
     try {
       const detail = await api.getVesselDetail(alert.vessel_id);
@@ -188,10 +206,49 @@ export default function Dashboard() {
     setComparedVessels([]);
   }, []);
 
+  const handleTimeChange = useCallback(async (timestamp: string | null) => {
+    setTimeFilter(timestamp);
+    if (!timestamp) {
+      // Back to live — restore live vessel data
+      setVessels(liveVesselsRef.current);
+      return;
+    }
+    try {
+      const positions = await api.getPositionsAtTime(timestamp);
+      // Map time positions back to Vessel shape for the map
+      const replayVessels: Vessel[] = positions.map((p: TimePositionEntry) => ({
+        id: p.vessel_id,
+        mmsi: p.mmsi ?? "",
+        name: p.vessel_name ?? "",
+        vessel_type: p.vessel_type ?? "other",
+        flag_state: "",
+        length: null,
+        beam: null,
+        draft: null,
+        imo: null,
+        callsign: null,
+        destination: null,
+        latest_position: {
+          timestamp: p.timestamp,
+          latitude: p.latitude,
+          longitude: p.longitude,
+          speed_over_ground: p.speed_over_ground,
+          course_over_ground: p.course_over_ground,
+          heading: p.heading,
+        },
+        risk_score: p.risk_score,
+        recommended_action: p.recommended_action,
+      }));
+      setVessels(replayVessels);
+    } catch {
+      // If replay fetch fails, stay on current data
+    }
+  }, []);
+
   if (loading) {
     return (
       <div className="h-screen flex flex-col bg-[#070a12]">
-        <Header alertCount={0} vesselCount={0} isLive={false} regions={{}} activeRegion={null} onRegionChange={() => {}} />
+        <Header alertCount={0} vesselCount={0} isLive={false} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-10 h-10 border-2 border-blue-500/30 border-t-blue-400 rounded-full animate-spin mx-auto mb-4" />
@@ -205,7 +262,7 @@ export default function Dashboard() {
   if (error) {
     return (
       <div className="h-screen flex flex-col bg-[#070a12]">
-        <Header alertCount={0} vesselCount={0} isLive={false} regions={{}} activeRegion={null} onRegionChange={() => {}} />
+        <Header alertCount={0} vesselCount={0} isLive={false} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-sm">
             <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-5">
@@ -232,9 +289,6 @@ export default function Dashboard() {
         vesselCount={vessels.length}
         isLive={!!isLive}
         positionsIngested={ingestionStatus?.positions_ingested}
-        regions={regions}
-        activeRegion={activeRegion}
-        onRegionChange={handleRegionChange}
       />
       <RegionSummary
         regions={regions}
@@ -272,10 +326,11 @@ export default function Dashboard() {
             alertId={selectedAlertId}
             onSatelliteFootprint={setSatelliteFootprint}
             onClose={handleCloseDetail}
+            onAlertAction={handleAlertAction}
           />
         )}
       </div>
-      <Timeline onTimeChange={() => {}} />
+      <Timeline onTimeChange={handleTimeChange} />
       {comparedVessels.length > 0 && (
         <VesselCompare
           vessels={comparedVessels}
