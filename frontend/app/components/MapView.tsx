@@ -25,6 +25,7 @@ interface MapViewProps {
 }
 
 const vesselColor = riskHex;
+const HEATMAP_ZOOM_THRESHOLD = 10; // Below this zoom: heatmap. At or above: individual markers.
 
 function geofenceColor(zoneType: string): string {
   switch (zoneType) {
@@ -270,6 +271,8 @@ export default function MapView({
   const [mapMode, setMapMode] = useState<MapMode>("maps");
   const [satelliteTiles, setSatelliteTiles] = useState<SatelliteTileSource | null>(null);
   const [hideNormal, setHideNormal] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(12.5);
+  const showMarkers = zoomLevel >= HEATMAP_ZOOM_THRESHOLD;
   const centerChangeRef = useRef(onMapCenterChange);
   const mapClickRef = useRef(onMapClick);
   const satelliteStyleKey = satelliteTiles
@@ -299,11 +302,72 @@ export default function MapView({
     };
   }, []);
 
+  // Build heatmap GeoJSON from vessels
+  const updateHeatmap = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const features = vessels
+      .filter((v) => v.latest_position)
+      .map((v) => ({
+        type: "Feature" as const,
+        geometry: {
+          type: "Point" as const,
+          coordinates: [v.latest_position!.longitude, v.latest_position!.latitude],
+        },
+        properties: {
+          risk: v.risk_score ?? 0,
+          weight: Math.max((v.risk_score ?? 0) / 100, 0.15),
+        },
+      }));
+
+    const geojson = { type: "FeatureCollection" as const, features };
+
+    if (map.getSource("vessel-heat")) {
+      (map.getSource("vessel-heat") as maplibregl.GeoJSONSource).setData(geojson);
+    } else {
+      map.addSource("vessel-heat", { type: "geojson", data: geojson });
+
+      map.addLayer({
+        id: "vessel-heatmap",
+        type: "heatmap",
+        source: "vessel-heat",
+        paint: {
+          "heatmap-weight": ["get", "weight"],
+          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 0.6, 10, 1.2],
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 8, 5, 25, 10, 40],
+          "heatmap-color": [
+            "interpolate", ["linear"], ["heatmap-density"],
+            0, "rgba(0,0,0,0)",
+            0.1, "rgba(34,197,94,0.3)",
+            0.3, "rgba(245,158,11,0.5)",
+            0.5, "rgba(249,115,22,0.6)",
+            0.7, "rgba(239,68,68,0.7)",
+            1, "rgba(239,68,68,0.9)",
+          ],
+          "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 9, 0.9, 10, 0],
+        },
+      });
+    }
+  }, [vessels]);
+
   const updateMarkers = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
 
+    // Update heatmap data regardless of zoom
+    updateHeatmap();
+
     const currentVesselIds = new Set<string>();
+
+    // When zoomed out, hide all markers — heatmap is visible
+    if (!showMarkers) {
+      Object.keys(markersRef.current).forEach((vesselId) => {
+        markersRef.current[vesselId].marker.remove();
+        delete markersRef.current[vesselId];
+      });
+      return;
+    }
 
     vessels.forEach((vessel) => {
       if (!vessel.latest_position) return;
@@ -379,7 +443,7 @@ export default function MapView({
         delete markersRef.current[vesselId];
       }
     });
-  }, [vessels, selectedVesselId, onSelectVessel, hideNormal]);
+  }, [vessels, selectedVesselId, onSelectVessel, hideNormal, showMarkers, updateHeatmap]);
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
@@ -406,6 +470,10 @@ export default function MapView({
       map.on("moveend", () => {
         const nextCenter = map.getCenter();
         centerChangeRef.current?.([nextCenter.lng, nextCenter.lat]);
+      });
+
+      map.on("zoom", () => {
+        setZoomLevel(map.getZoom());
       });
 
       map.on("click", (event) => {

@@ -252,9 +252,6 @@ def list_vessels(
         if not pos:
             is_inactive = True
             status_reason = "No position data"
-        elif pos.speed_over_ground is not None and pos.speed_over_ground <= 0.1:
-            is_inactive = True
-            status_reason = "Stationary"
 
         items.append(VesselSchema(
             id=v.id,
