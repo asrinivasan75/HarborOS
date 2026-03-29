@@ -637,9 +637,9 @@ export default function VesselDetailPanel({
               <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
                 <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Velocity</span>
                 <span className={`text-lg font-bold font-mono ${vel && vel > 0.1 ? "text-amber-400" : "text-emerald-400"}`}>
-                  {vel != null ? `${vel.toFixed(2)}` : "—"}
+                  {vel != null ? vel.toFixed(3) : "0.000"}
                 </span>
-                {vel != null && <span className="text-[9px] text-slate-500 block mt-0.5">m/s</span>}
+                <span className="text-[9px] text-slate-500 block mt-0.5">m/s</span>
               </div>
               <div className="bg-[#111827] rounded-lg p-3 border border-[#1a2235]">
                 <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-1">Bearing</span>
