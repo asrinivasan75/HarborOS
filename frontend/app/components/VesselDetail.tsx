@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
-import type { VesselDetail as VesselDetailType, VerificationRequest } from "@/app/lib/api";
+import type { VesselDetail as VesselDetailType, VerificationRequest, RiskHistoryPoint } from "@/app/lib/api";
 import { api } from "@/app/lib/api";
 import { riskTextClass, riskLevel, RISK_THRESHOLDS } from "@/app/lib/risk";
 
@@ -219,9 +219,86 @@ function formatReportHTML(report: Record<string, unknown>): string {
 }
 
 export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint, onAlertAction, closing }: VesselDetailProps) {
+function RiskSparkline({ data }: { data: RiskHistoryPoint[] }) {
+  if (data.length < 2) return null;
+
+  const w = 200;
+  const h = 32;
+  const pad = 2;
+  const scores = data.map((d) => d.risk_score);
+  const minS = Math.max(0, Math.min(...scores) - 5);
+  const maxS = Math.min(100, Math.max(...scores) + 5);
+  const range = maxS - minS || 1;
+
+  const points = scores.map((s, i) => {
+    const x = pad + (i / (scores.length - 1)) * (w - pad * 2);
+    const y = h - pad - ((s - minS) / range) * (h - pad * 2);
+    return `${x},${y}`;
+  });
+
+  const last = scores[scores.length - 1];
+  const first = scores[0];
+  const trend = last - first;
+  const trendLabel =
+    trend > 5 ? "Escalating" : trend < -5 ? "De-escalating" : "Stable";
+  const trendColor =
+    trend > 5
+      ? "text-red-400"
+      : trend < -5
+        ? "text-green-400"
+        : "text-slate-500";
+
+  const lineColor =
+    last >= RISK_THRESHOLDS.escalate
+      ? "#f87171"
+      : last >= RISK_THRESHOLDS.verify
+        ? "#fb923c"
+        : last >= RISK_THRESHOLDS.monitor
+          ? "#facc15"
+          : "#4ade80";
+
+  const lastX = pad + ((scores.length - 1) / (scores.length - 1)) * (w - pad * 2);
+  const lastY = h - pad - ((last - minS) / range) * (h - pad * 2);
+
+  return (
+    <div className="flex items-center gap-2 mt-2">
+      <svg
+        width={w}
+        height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        className="shrink-0"
+      >
+        <polyline
+          points={points.join(" ")}
+          fill="none"
+          stroke={lineColor}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity="0.8"
+        />
+        <circle cx={lastX} cy={lastY} r="2.5" fill={lineColor} />
+      </svg>
+      <span className={`text-[9px] font-medium uppercase tracking-wide ${trendColor}`}>
+        {trendLabel}
+      </span>
+    </div>
+  );
+}
+
+export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint, onAlertAction }: VesselDetailProps) {
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [riskHistory, setRiskHistory] = useState<RiskHistoryPoint[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getRiskHistory(vessel.id, 6).then((data) => {
+      if (!cancelled) setRiskHistory(data);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [vessel.id]);
 
   const handleExportReport = useCallback(async () => {
     setExportLoading(true);
@@ -387,6 +464,7 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
             </div>
           </div>
         </div>
+        {riskHistory.length >= 2 && <RiskSparkline data={riskHistory} />}
         {vessel.explanation && (
           <p className="text-[11px] text-slate-400 leading-relaxed">{vessel.explanation}</p>
         )}
@@ -485,6 +563,57 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
           </>
         )}
       </div>
+
+      {/* Current Position */}
+      {vessel.latest_position && (
+        <div className="p-5 border-b border-[#1a2235]">
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Current Position</h3>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+            <InfoRow label="Lat" value={vessel.latest_position.latitude.toFixed(5)} />
+            <InfoRow label="Lon" value={vessel.latest_position.longitude.toFixed(5)} />
+            <InfoRow
+              label="Speed"
+              value={vessel.latest_position.speed_over_ground != null ? `${vessel.latest_position.speed_over_ground.toFixed(1)} kt` : "\u2014"}
+            />
+            <InfoRow
+              label="Course"
+              value={vessel.latest_position.course_over_ground != null ? `${vessel.latest_position.course_over_ground.toFixed(0)}\u00B0` : "\u2014"}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Weather Conditions */}
+      {vessel.weather && (
+        <div className="p-5 border-b border-[#1a2235]">
+          <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">Weather Conditions</h3>
+          {(vessel.weather.wind_speed_kt > 25 || vessel.weather.visibility_nm < 2) && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <p className="text-[10px] text-amber-400 font-medium">
+                Adverse weather — detection thresholds adjusted
+              </p>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+            <InfoRow
+              label="Wind"
+              value={`${vessel.weather.wind_speed_kt.toFixed(0)} kt ${vessel.weather.wind_direction}`}
+              highlight={vessel.weather.wind_speed_kt > 25}
+            />
+            <InfoRow
+              label="Visibility"
+              value={`${vessel.weather.visibility_nm.toFixed(1)} nm`}
+              highlight={vessel.weather.visibility_nm < 2}
+            />
+            {vessel.weather.temperature_f != null && (
+              <InfoRow label="Temp" value={`${vessel.weather.temperature_f}°F`} />
+            )}
+            {vessel.weather.description && (
+              <InfoRow label="Forecast" value={vessel.weather.description} />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Verification Action */}
       {riskScore >= RISK_THRESHOLDS.monitor && (

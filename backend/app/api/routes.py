@@ -36,11 +36,13 @@ def _classify_vessel_status(
 from app.database import get_db
 from app.models.domain import (
     VesselORM, PositionReportORM, GeofenceORM, AlertORM, VerificationRequestORM, AlertAuditORM,
+    RiskHistoryORM,
     VesselSchema, VesselDetailSchema, GeofenceSchema, AlertSchema, AlertAuditSchema,
     AlertActionRequest, DetectionMetricsSchema,
     RiskDistributionSchema, RiskTierSchema, RiskHistogramBinSchema,
     VerificationRequestSchema, VerificationRequestCreate,
     RiskAssessmentSchema, AnomalySignalSchema, PositionReportSchema,
+    RiskHistorySchema, WeatherSchema,
 )
 from app.services.anomaly_detection import run_anomaly_detection
 from app.services.risk_scoring import compute_risk_assessment
@@ -247,6 +249,22 @@ def get_vessel_detail(vessel_id: str, db: Session = Depends(get_db)):
     # Check physical state
     if positions and not is_resolved:
         is_inactive, status_reason = _classify_vessel_status(positions)
+    # Fetch weather conditions for vessel position (lazy — only on detail view)
+    weather_schema = None
+    if positions:
+        try:
+            from app.data_sources.nws_adapter import get_weather
+            weather = get_weather(positions[-1].latitude, positions[-1].longitude)
+            if weather:
+                weather_schema = WeatherSchema(
+                    wind_speed_kt=weather.wind_speed_kt,
+                    wind_direction=weather.wind_direction,
+                    visibility_nm=weather.visibility_nm,
+                    temperature_f=weather.temperature_f,
+                    description=weather.description,
+                )
+        except Exception:
+            pass
 
     return VesselDetailSchema(
         id=vessel.id,
@@ -285,6 +303,7 @@ def get_vessel_detail(vessel_id: str, db: Session = Depends(get_db)):
         is_inactive=is_inactive,
         is_resolved=is_resolved,
         status_reason=status_reason,
+        weather=weather_schema,
     )
 
 
@@ -428,6 +447,38 @@ def get_vessel_risk(vessel_id: str, db: Session = Depends(get_db)):
     signals = run_anomaly_detection(vessel, positions, geofences)
     assessment = compute_risk_assessment(vessel, signals)
     return assessment
+
+
+@router.get("/vessels/{vessel_id}/risk-history")
+def get_risk_history(
+    vessel_id: str,
+    hours: int = Query(6, ge=1, le=24),
+    db: Session = Depends(get_db),
+):
+    """Get risk score history for sparkline trend visualization."""
+    vessel = db.query(VesselORM).filter(VesselORM.id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    rows = (
+        db.query(RiskHistoryORM)
+        .filter(
+            RiskHistoryORM.vessel_id == vessel_id,
+            RiskHistoryORM.timestamp >= cutoff,
+        )
+        .order_by(RiskHistoryORM.timestamp)
+        .all()
+    )
+    return [
+        RiskHistorySchema(
+            vessel_id=r.vessel_id,
+            risk_score=r.risk_score,
+            recommended_action=r.recommended_action,
+            timestamp=r.timestamp,
+        )
+        for r in rows
+    ]
 
 
 # ── Alerts ─────────────────────────────────────────────

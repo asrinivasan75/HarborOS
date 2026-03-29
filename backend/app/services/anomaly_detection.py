@@ -26,6 +26,12 @@ from app.models.domain import (
 from app.services.vessel_profiles import get_profile
 from app.services.pattern_learning import LearnedBaseline
 
+# Optional import — weather may not always be available
+try:
+    from app.data_sources.nws_adapter import WeatherConditions
+except ImportError:
+    WeatherConditions = None
+
 
 def _fmt_type(vessel_type: str | None) -> str:
     """Format vessel type for display: 'high_speed' → 'high speed'."""
@@ -125,6 +131,11 @@ def detect_loitering(
     if len(positions) < 5:
         return []
 
+    # Weather adjustment: vessels legitimately stop or slow in fog
+    weather = kwargs.get("weather")
+    if weather and hasattr(weather, "visibility_nm") and weather.visibility_nm < 2.0:
+        return []
+
     profile = get_profile(vessel.vessel_type)
     severity_mult = profile["loiter_severity_mult"]
 
@@ -216,6 +227,14 @@ def detect_speed_anomaly(
     profile = get_profile(vessel.vessel_type)
     speed_threshold = profile["speed_delta_threshold"]
 
+    # Weather adjustment: vessels slow down in heavy weather — widen threshold
+    weather = kwargs.get("weather")
+    weather_adjusted = False
+    if weather and hasattr(weather, "wind_speed_kt") and weather.wind_speed_kt > 25:
+        original_threshold = speed_threshold
+        speed_threshold = speed_threshold * 1.5
+        weather_adjusted = True
+
     speeds = [(p.timestamp, p.speed_over_ground) for p in positions if p.speed_over_ground is not None]
     if len(speeds) < 3:
         return []
@@ -245,7 +264,8 @@ def detect_speed_anomaly(
             severity=severity,
             description=f"{large_changes} rapid speed changes detected (max {max_change:.1f} kt jump, threshold {speed_threshold} kt). {cause.capitalize()}.",
             details={"rapid_changes": large_changes, "max_delta_knots": round(max_change, 1),
-                     "threshold_knots": speed_threshold, "vessel_type": vessel.vessel_type}
+                     "threshold_knots": speed_threshold, "vessel_type": vessel.vessel_type,
+                     **({"weather_adjustment": f"threshold relaxed from {original_threshold} to {speed_threshold:.0f} kt (wind {weather.wind_speed_kt:.0f} kt)"} if weather_adjusted else {})}
         ))
 
     # Check against learned speed distribution if available
@@ -288,6 +308,11 @@ def detect_heading_anomaly(
     profile = get_profile(vessel.vessel_type)
     turn_threshold = profile["heading_change_deg"]
     severity_mult = profile["heading_severity_mult"]
+
+    # Weather adjustment: heavy seas cause heading wander
+    weather = kwargs.get("weather")
+    if weather and hasattr(weather, "wind_speed_kt") and weather.wind_speed_kt > 25:
+        turn_threshold = turn_threshold * 1.3
 
     headings = [p.course_over_ground for p in positions if p.course_over_ground is not None]
     if len(headings) < 5:
@@ -788,6 +813,12 @@ def detect_collision_risk(
     a = 1.5
     b = 12.0
 
+    # Weather adjustment: reduced visibility = higher actual collision risk
+    weather = kwargs.get("weather")
+    cr_threshold = 0.25
+    if weather and hasattr(weather, "visibility_nm") and weather.visibility_nm < 2.0:
+        cr_threshold = 0.15  # more sensitive in low visibility
+
     best_signal = None
     best_cr = 0
     for other_id, other_lat, other_lon, other_sog, other_cog, other_name in nearby_vessels:
@@ -830,7 +861,7 @@ def detect_collision_risk(
         f_adjusted = 1.0 + math.log(max(f_angle, 1.0)) / math.log(8.5)
         cr = min(1.0, base_cr * f_adjusted)
 
-        if cr < 0.25:
+        if cr < cr_threshold:
             continue
 
         severity = min(0.65, cr * 0.65)
@@ -1053,6 +1084,7 @@ def run_anomaly_detection(
     regional_stats: dict | None = None,
     nearby_vessels: list[tuple] | None = None,
     learned_baseline: LearnedBaseline | None = None,
+    weather=None,
 ) -> list[AnomalySignalSchema]:
     """Run all anomaly detectors against a vessel and return combined signals.
 
@@ -1063,6 +1095,7 @@ def run_anomaly_detection(
         regional_stats: Pre-computed regional statistics for outlier detection
         nearby_vessels: List of (id, lat, lon, sog, cog, name) for collision risk
         learned_baseline: Historical baselines from archived data
+        weather: Current weather conditions at vessel position (from NWS)
     """
     all_signals = []
 
@@ -1072,6 +1105,7 @@ def run_anomaly_detection(
             signals = detector(
                 vessel=vessel, positions=positions, geofences=geofences,
                 learned_baseline=learned_baseline,
+                weather=weather,
             )
             all_signals.extend(signals)
         except Exception:
@@ -1105,6 +1139,7 @@ def run_anomaly_detection(
             signals = detect_collision_risk(
                 vessel=vessel, positions=positions,
                 nearby_vessels=nearby_vessels,
+                weather=weather,
             )
             all_signals.extend(signals)
         except Exception:

@@ -20,7 +20,7 @@ import uuid
 from app.database import engine, SessionLocal, Base, init_db
 from app.models.domain import (
     VesselORM, PositionReportORM, GeofenceORM,
-    AlertORM, AnomalySignalORM
+    AlertORM, AnomalySignalORM, RiskHistoryORM,
 )
 from app.services.alert_service import generate_alerts_for_all_vessels
 
@@ -638,6 +638,29 @@ def seed():
         print("Running anomaly detection and generating alerts...")
         alerts = generate_alerts_for_all_vessels(db)
         print(f"Created {len(alerts)} alerts")
+
+        # Seed risk history for sparkline visualization (simulate 3 hours of trend data)
+        print("Seeding risk history for sparkline trends...")
+        now = datetime.utcnow()
+        for alert in alerts:
+            base_score = alert.risk_score
+            # Create ~12 data points over the past 3 hours (every ~15 min)
+            for i in range(12):
+                minutes_ago = (12 - i) * 15
+                # Simulate escalation: score ramps up toward current value
+                progress = (i + 1) / 12
+                noise = random.uniform(-3, 3)
+                # Start at 40-60% of current score and ramp up
+                score = max(0, min(100, base_score * (0.4 + 0.6 * progress) + noise))
+                db.add(RiskHistoryORM(
+                    vessel_id=alert.vessel_id,
+                    risk_score=round(score, 1),
+                    recommended_action=alert.recommended_action,
+                    timestamp=now - timedelta(minutes=minutes_ago),
+                ))
+        db.commit()
+        history_count = db.query(RiskHistoryORM).count()
+        print(f"  Risk history points: {history_count}")
 
         # Print summary
         vessels_count = db.query(VesselORM).count()

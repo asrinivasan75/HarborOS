@@ -40,12 +40,28 @@ export interface Vessel {
   status_reason?: string | null;
 }
 
+export interface Weather {
+  wind_speed_kt: number;
+  wind_direction: string;
+  visibility_nm: number;
+  temperature_f: number | null;
+  description: string;
+}
+
 export interface VesselDetail extends Vessel {
   positions: Position[];
   anomaly_signals: AnomalySignal[];
   explanation: string | null;
   inspection_deficiencies: number;
   last_inspection_date: string | null;
+  weather: Weather | null;
+}
+
+export interface RiskHistoryPoint {
+  vessel_id: string;
+  risk_score: number;
+  recommended_action: string;
+  timestamp: string;
 }
 
 export interface AnomalySignal {
@@ -234,4 +250,6 @@ export const api = {
     fetchAPI<Record<string, unknown>>(`/vessels/${vesselId}/report`),
   getPositionsAtTime: (timestamp: string) =>
     fetchAPI<TimePositionEntry[]>(`/vessels/positions/at-time?timestamp=${encodeURIComponent(timestamp)}`),
+  getRiskHistory: (vesselId: string, hours = 6) =>
+    fetchAPI<RiskHistoryPoint[]>(`/vessels/${vesselId}/risk-history?hours=${hours}`),
 };
