@@ -381,6 +381,32 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
         )}
       </div>
 
+      {/* Live Camera Feed — from SeaPod edge node */}
+      {(() => {
+        const streamSignal = vessel.anomaly_signals.find(
+          (s) => s.details && (s.details as Record<string, unknown>).stream_url
+        );
+        const streamUrl = streamSignal
+          ? String((streamSignal.details as Record<string, unknown>).stream_url)
+          : null;
+        if (!streamUrl || streamUrl === "null") return null;
+        return (
+          <div className="p-5 border-b border-[#1a2235]">
+            <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-3">
+              Live Camera Feed
+            </h3>
+            <div className="rounded-lg overflow-hidden bg-black aspect-video border border-[#1a2235]">
+              <img
+                src={streamUrl}
+                alt="SeaPod live camera feed"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <p className="text-[9px] text-slate-600 mt-2 font-mono truncate">{streamUrl}</p>
+          </div>
+        );
+      })()}
+
       {/* Anomaly Signals */}
       {vessel.anomaly_signals.length > 0 && (
         <div className="p-5 border-b border-[#1a2235]">
