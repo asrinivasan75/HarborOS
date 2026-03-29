@@ -286,7 +286,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
         </svg>
       </div>`;
 
-      el.title = `${vessel.name} (${vessel.mmsi})`;
+      el.title = `${vessel.name} (${vessel.mmsi})${vessel.is_inactive && vessel.status_reason ? ` — ${vessel.status_reason}` : ""}`;
       marker.setLngLat([vessel.latest_position.longitude, vessel.latest_position.latitude]);
     });
 
@@ -307,6 +307,7 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
       center: [-118.265, 33.725],
       zoom: 12.5,
       pitch: 0,
+      attributionControl: false,
     });
 
     map.on("error", () => {
