@@ -38,13 +38,6 @@ function abbreviate(key: string, name: string): string {
   return name;
 }
 
-function densityColor(density: number): string {
-  if (density >= 0.5) return "bg-red-500";
-  if (density >= 0.25) return "bg-amber-500";
-  if (density > 0) return "bg-yellow-500";
-  return "bg-slate-600";
-}
-
 export default function RegionSummary({ regions, activeRegion, onSelectRegion }: RegionSummaryProps) {
   const [stats, setStats] = useState<Record<string, RegionStats>>({});
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -82,12 +75,17 @@ export default function RegionSummary({ regions, activeRegion, onSelectRegion }:
   }, [regions]);
 
   useEffect(() => {
-    fetchStats();
+    const timeoutId = setTimeout(() => {
+      void fetchStats();
+    }, 0);
 
     if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(fetchStats, 30000);
+    intervalRef.current = setInterval(() => {
+      void fetchStats();
+    }, 30000);
 
     return () => {
+      clearTimeout(timeoutId);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchStats]);

@@ -8,7 +8,7 @@ suspicious vessel harder to verify but don't create risk on their own.
 Action recommendations aligned with ISPS Code MARSEC levels:
   IGNORE    → Below MARSEC 1 (normal traffic)
   MONITOR   → MARSEC 1 (elevated awareness)
-  VERIFY    → MARSEC 2 (dispatch verification asset)
+  VERIFY    → MARSEC 2 (request satellite verification)
   ESCALATE  → MARSEC 3 (immediate interdiction response)
 """
 

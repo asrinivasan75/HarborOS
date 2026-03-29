@@ -105,6 +105,89 @@ export interface VerificationRequest {
   result_confidence: number | null;
   result_notes: string | null;
   result_media_ref: string | null;
+  satellite: SatelliteVerification | null;
+}
+
+export interface SatelliteBBox {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}
+
+export interface SatelliteSearch {
+  spread_deg: number | null;
+  days_back: number | null;
+  max_cloud_cover: number | null;
+}
+
+export interface SatelliteScene {
+  acquired_at: string | null;
+  satellite: string | null;
+  resolution_m: number | null;
+  cloud_cover_pct: number | null;
+  status: string | null;
+  catalog_id: string | null;
+  note: string | null;
+}
+
+export interface SatelliteVerification {
+  source: string | null;
+  catalog_status: string | null;
+  request_lat: number | null;
+  request_lng: number | null;
+  bbox: SatelliteBBox | null;
+  search: SatelliteSearch | null;
+  scene: SatelliteScene | null;
+}
+
+export interface SatelliteTileSource {
+  tile_url: string;
+  source: string;
+  time_range: string;
+  resolution: string;
+  tile_size: number;
+  max_zoom: number;
+  attribution: string;
+  note: string;
+  sentinel2_available: boolean;
+}
+
+export interface SatelliteConstellationInfo {
+  constellation: string;
+  satellites: string[];
+  resolution: string;
+  revisit_days: number;
+  swath_width_km: number;
+  bands: number;
+  orbit: string;
+  data_access: string;
+  configured: boolean;
+  integration_status: string;
+}
+
+export interface SatelliteInfoResponse {
+  configured: boolean;
+  tiles: SatelliteTileSource;
+  constellation: SatelliteConstellationInfo;
+}
+
+export interface SatelliteAcquisition {
+  id: string | null;
+  datetime: string | null;
+  cloud_cover: number | null;
+  satellite: string | null;
+  processing_level: string | null;
+  bbox: [number, number, number, number] | null;
+  geometry: GeoJSON.Geometry | null;
+  render_url: string | null;
+}
+
+export interface SatelliteSearchResponse {
+  bbox: SatelliteBBox | null;
+  focus?: { latitude: number; longitude: number } | null;
+  results: SatelliteAcquisition[];
+  count: number;
 }
 
 export interface Timeline {
@@ -200,6 +283,20 @@ export interface TimePositionEntry {
   recommended_action: string;
 }
 
+export interface SatelliteSearchParams {
+  vesselId?: string;
+  west?: number;
+  south?: number;
+  east?: number;
+  north?: number;
+  spreadDeg?: number;
+  daysBack?: number;
+  maxCloudCover?: number;
+  limit?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 // ── API Functions ─────────────────────────────────────
 
 export const api = {
@@ -238,10 +335,71 @@ export const api = {
     fetchAPI(`/alerts/${id}?status=${status}`, { method: "PATCH" }),
   getGeofences: () => fetchAPI<Geofence[]>("/geofences"),
   getTimeline: () => fetchAPI<Timeline>("/scenario/timeline"),
-  createVerificationRequest: (alertId: string, vesselId: string, assetType = "camera") =>
+  getSatelliteInfo: () => fetchAPI<SatelliteInfoResponse>("/satellite/info"),
+  searchSatelliteImagery: (params: SatelliteSearchParams) => {
+    const query = new URLSearchParams();
+    if (params.daysBack != null) query.set("days_back", String(params.daysBack));
+    if (params.maxCloudCover != null) query.set("max_cloud_cover", String(params.maxCloudCover));
+    if (params.limit != null) query.set("limit", String(params.limit));
+    if (params.dateFrom) query.set("date_from", params.dateFrom);
+    if (params.dateTo) query.set("date_to", params.dateTo);
+
+    if (params.vesselId) {
+      if (params.spreadDeg != null) query.set("spread_deg", String(params.spreadDeg));
+      return fetchAPI<SatelliteSearchResponse>(`/satellite/by-vessel/${params.vesselId}?${query}`);
+    }
+
+    if (
+      params.west == null ||
+      params.south == null ||
+      params.east == null ||
+      params.north == null
+    ) {
+      throw new Error("Satellite bbox search requires west, south, east, and north.");
+    }
+
+    query.set("west", String(params.west));
+    query.set("south", String(params.south));
+    query.set("east", String(params.east));
+    query.set("north", String(params.north));
+    return fetchAPI<SatelliteSearchResponse>(`/satellite/search?${query}`);
+  },
+  getSatelliteImageryUrl: (params: {
+    west: number;
+    south: number;
+    east: number;
+    north: number;
+    width?: number;
+    height?: number;
+    dateFrom?: string;
+    dateTo?: string;
+  }) => {
+    const query = new URLSearchParams({
+      west: String(params.west),
+      south: String(params.south),
+      east: String(params.east),
+      north: String(params.north),
+      width: String(params.width ?? 768),
+      height: String(params.height ?? 768),
+    });
+    if (params.dateFrom) query.set("date_from", params.dateFrom);
+    if (params.dateTo) query.set("date_to", params.dateTo);
+    return `/api/satellite/imagery?${query.toString()}`;
+  },
+  createVerificationRequest: (
+    alertId: string,
+    vesselId: string,
+    focus?: { latitude: number; longitude: number } | null,
+  ) =>
     fetchAPI<VerificationRequest>("/verification-requests", {
       method: "POST",
-      body: JSON.stringify({ alert_id: alertId, vessel_id: vesselId, asset_type: assetType }),
+      body: JSON.stringify({
+        alert_id: alertId,
+        vessel_id: vesselId,
+        asset_type: "satellite",
+        focus_lat: focus?.latitude ?? null,
+        focus_lng: focus?.longitude ?? null,
+      }),
     }),
   getVerificationRequest: (id: string) =>
     fetchAPI<VerificationRequest>(`/verification-requests/${id}`),

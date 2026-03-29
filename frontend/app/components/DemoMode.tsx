@@ -44,7 +44,7 @@ const DEMO_STEPS: Omit<DemoStep, "action">[] = [
   },
   {
     title: "Verification Dispatch",
-    narration: "With one click, the operator can dispatch a verification asset \u2014 a camera, patrol boat, or drone. Today that's a software stub, but the API is production-ready for hardware integration.",
+    narration: "With one click, the operator can request satellite imagery for the vessel or the current map focus. HarborOS returns the best available scene immediately and overlays the real image when bbox metadata is available.",
     duration: 0,
   },
   {

@@ -10,7 +10,7 @@ import RegionSummary from "@/app/components/RegionSummary";
 import RiskDistributionPanel from "@/app/components/RiskDistribution";
 import Toast from "@/app/components/Toast";
 import type { ToastItem } from "@/app/components/Toast";
-import type { SatelliteFootprint } from "@/app/components/MapView";
+import type { SatelliteOverlay } from "@/app/components/MapView";
 import { api } from "@/app/lib/api";
 import type { Vessel, VesselDetail, Alert, Geofence, IngestionStatus, Region, RiskDistribution } from "@/app/lib/api";
 
@@ -30,7 +30,9 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [ingestionStatus, setIngestionStatus] = useState<IngestionStatus | null>(null);
   const [mapTarget, setMapTarget] = useState<{ center: [number, number]; zoom: number; _t?: number } | null>(null);
-  const [satelliteFootprint, setSatelliteFootprint] = useState<SatelliteFootprint | null>(null);
+  const [satelliteOverlay, setSatelliteOverlay] = useState<SatelliteOverlay | null>(null);
+  const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
+  const [mapClickFocus, setMapClickFocus] = useState<[number, number] | null>(null);
   const [alertStatusFilter, setAlertStatusFilter] = useState<string>("active");
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [analyticsData, setAnalyticsData] = useState<RiskDistribution | null>(null);
@@ -52,13 +54,19 @@ export default function Dashboard() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const verificationFocus = mapClickFocus
+    ? { latitude: mapClickFocus[1], longitude: mapClickFocus[0] }
+    : mapCenter
+      ? { latitude: mapCenter[1], longitude: mapCenter[0] }
+      : null;
+
   // Load initial data
   useEffect(() => {
     async function loadData() {
       try {
         const [v, a, g, r] = await Promise.all([
           api.getVessels(),
-          api.getAlerts(alertStatusFilter || undefined),
+          api.getAlerts("active"),
           api.getGeofences(),
           api.getRegions(),
         ]);
@@ -107,13 +115,14 @@ export default function Dashboard() {
     }, REFRESH_INTERVAL_MS);
 
     return () => { if (refreshTimer.current) clearInterval(refreshTimer.current); };
-  }, [activeRegion, alertStatusFilter]);
+  }, [activeRegion, alertStatusFilter, connectionOk, showToast]);
 
   // Region change handler
   const handleRegionChange = useCallback(async (regionKey: string | null) => {
     setActiveRegion(regionKey);
     setSelectedVessel(null);
     setSelectedAlertId(null);
+    setMapClickFocus(null);
     alertsLimitRef.current = 50;
 
     // Fly to the region
@@ -136,14 +145,15 @@ export default function Dashboard() {
       setAlerts(a.items);
       setAlertsTotal(a.total);
     } catch {}
-  }, [regions]);
+  }, [regions, alertStatusFilter]);
 
   const handleSelectVessel = useCallback(async (vesselId: string) => {
     // Cancel any pending close animation
     if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; setDetailClosing(false); }
     // Close analytics if open
     if (showAnalytics) { setShowAnalytics(false); setAnalyticsClosing(false); }
-    setSatelliteFootprint(null);
+    setSatelliteOverlay(null);
+    setMapClickFocus(null);
     try {
       const detail = await api.getVesselDetail(vesselId);
       setSelectedVessel(detail);
@@ -159,10 +169,12 @@ export default function Dashboard() {
     } catch (e) {
       console.error("Failed to load vessel detail:", e);
     }
-  }, [alerts]);
+  }, [alerts, showAnalytics]);
 
   const handleSelectAlert = useCallback(async (alert: Alert) => {
     setSelectedAlertId(alert.id);
+    setSatelliteOverlay(null);
+    setMapClickFocus(null);
     try {
       const detail = await api.getVesselDetail(alert.vessel_id);
       setSelectedVessel(detail);
@@ -196,14 +208,14 @@ export default function Dashboard() {
       setAlerts(a.items);
       setAlertsTotal(a.total);
     } catch {}
-  }, [activeRegion, alerts.length]);
+  }, [activeRegion, alerts.length, alertStatusFilter]);
 
   const handleCloseDetail = useCallback(() => {
     setDetailClosing(true);
     closeTimerRef.current = setTimeout(() => {
       setSelectedVessel(null);
       setSelectedAlertId(null);
-      setSatelliteFootprint(null);
+      setSatelliteOverlay(null);
       setDetailClosing(false);
       closeTimerRef.current = null;
     }, 200);
@@ -349,10 +361,15 @@ export default function Dashboard() {
             selectedVesselId={selectedVessel?.id ?? null}
             onSelectVessel={handleSelectVessel}
             flyTo={mapTarget}
-            satelliteFootprint={satelliteFootprint}
+            satelliteOverlay={satelliteOverlay}
+            onMapCenterChange={setMapCenter}
+            onMapClick={setMapClickFocus}
           />
           <DemoMode
-            onFlyTo={(center, zoom) => setMapTarget({ center, zoom, _t: Date.now() })}
+            onFlyTo={(center, zoom) => {
+              setMapClickFocus(null);
+              setMapTarget({ center, zoom, _t: Date.now() });
+            }}
             onSelectVessel={handleSelectVessel}
             onSelectRegion={handleRegionChange}
             darkHorizonId="v-dark-horizon"
@@ -369,7 +386,8 @@ export default function Dashboard() {
           <VesselDetailPanel
             vessel={selectedVessel!}
             alertId={selectedAlertId}
-            onSatelliteFootprint={setSatelliteFootprint}
+            onSatelliteOverlay={setSatelliteOverlay}
+            verificationFocus={verificationFocus}
             onClose={handleCloseDetail}
             onAlertAction={handleAlertAction}
             closing={detailClosing}

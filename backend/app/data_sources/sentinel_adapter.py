@@ -20,7 +20,9 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
+from math import atan, degrees, pi, sinh
 from typing import Optional
+from urllib.parse import urlencode
 
 logger = logging.getLogger("harboros.sentinel")
 
@@ -94,14 +96,18 @@ def search_imagery(
     days_back: int = 30,
     max_cloud_cover: float = 30.0,
     limit: int = 5,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> list[dict]:
     """Search for recent Sentinel-2 acquisitions over a bounding box.
 
     Args:
         bbox: [west, south, east, north] in WGS84
-        days_back: how far back to search
+        days_back: how far back to search when explicit dates are not provided
         max_cloud_cover: max cloud cover percentage (0-100)
         limit: max results to return
+        date_from: optional start date (YYYY-MM-DD)
+        date_to: optional end date (YYYY-MM-DD)
 
     Returns:
         List of dicts with acquisition date, cloud cover, geometry, etc.
@@ -111,8 +117,15 @@ def search_imagery(
     if not token:
         return []
 
-    end = datetime.utcnow()
-    start = end - timedelta(days=days_back)
+    if date_to:
+        end = datetime.fromisoformat(date_to)
+    else:
+        end = datetime.utcnow()
+
+    if date_from:
+        start = datetime.fromisoformat(date_from)
+    else:
+        start = end - timedelta(days=days_back)
 
     search_body = {
         "collections": ["sentinel-2-l2a"],
@@ -248,6 +261,69 @@ function evaluatePixel(sample) {
         return None
 
 
+def build_search_bbox(lat: float, lng: float, spread_deg: float = 0.08) -> list[float]:
+    """Build a simple square search bbox around a point."""
+    return [lng - spread_deg, lat - spread_deg, lng + spread_deg, lat + spread_deg]
+
+
+def build_imagery_url(
+    bbox: list[float],
+    width: int = 768,
+    height: int = 768,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> str:
+    """Build a relative API URL for rendered imagery."""
+    params = {
+        "west": bbox[0],
+        "south": bbox[1],
+        "east": bbox[2],
+        "north": bbox[3],
+        "width": width,
+        "height": height,
+    }
+    if date_from:
+        params["date_from"] = date_from
+    if date_to:
+        params["date_to"] = date_to
+    return f"/api/satellite/imagery?{urlencode(params)}"
+
+
+def _mercator_tile_bbox(z: int, x: int, y: int) -> list[float]:
+    """Convert a web mercator tile index to a WGS84 bbox."""
+    n = 2 ** z
+    west = (x / n) * 360.0 - 180.0
+    east = ((x + 1) / n) * 360.0 - 180.0
+    north = degrees(atan(sinh(pi * (1 - (2 * y) / n))))
+    south = degrees(atan(sinh(pi * (1 - (2 * (y + 1)) / n))))
+    return [west, south, east, north]
+
+
+def get_sentinel2_tile_png(
+    z: int,
+    x: int,
+    y: int,
+    tile_size: int = 512,
+    days_back: int = 30,
+) -> bytes | None:
+    """Render a single basemap tile through the existing Process API flow."""
+    bbox = _mercator_tile_bbox(z, x, y)
+    date_to = datetime.utcnow().strftime("%Y-%m-%d")
+    date_from = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    return get_imagery_png(
+        bbox=bbox,
+        width=tile_size,
+        height=tile_size,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+def get_fallback_tile_url(z: int, x: int, y: int) -> str:
+    """Build the fallback basemap tile URL."""
+    return ESRI_TILE_URL.format(z=z, x=x, y=y)
+
+
 # ── Public API (used by routes.py) ──────────────────
 
 def get_sentinel2_tile_url(days_back: int = 30) -> dict:
@@ -267,6 +343,9 @@ def get_sentinel2_tile_url(days_back: int = 30) -> dict:
             "source": "Copernicus Sentinel-2 L2A (ESA)",
             "time_range": time_range,
             "resolution": "10m",
+            "tile_size": 512,
+            "max_zoom": 18,
+            "attribution": "&copy; ESA Copernicus Data Space Ecosystem",
             "note": "Real Sentinel-2 imagery via Copernicus Data Space",
             "sentinel2_available": True,
         }
@@ -276,6 +355,9 @@ def get_sentinel2_tile_url(days_back: int = 30) -> dict:
         "source": "Esri World Imagery (Maxar, Earthstar Geographics)",
         "time_range": time_range,
         "resolution": "~1m (varies by location)",
+        "tile_size": 256,
+        "max_zoom": 18,
+        "attribution": "&copy; Esri, Maxar, Earthstar Geographics",
         "note": "Fallback imagery. Set CDSE_CLIENT_ID and CDSE_CLIENT_SECRET for real Sentinel-2.",
         "sentinel2_available": False,
     }
