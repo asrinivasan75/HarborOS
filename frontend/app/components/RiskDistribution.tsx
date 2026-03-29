@@ -32,6 +32,7 @@ export default function RiskDistributionPanel({ data, onClose, closing }: Props)
 
   return (
     <div
+      data-tour="analytics-panel"
       className="absolute inset-y-0 right-0 w-[400px] bg-[#0d1320]/95 backdrop-blur-md border-l border-[#1a2235] shadow-2xl shadow-black/50 z-50 flex flex-col"
       style={{ animation: closing ? "slide-out-right 0.2s ease-in forwards" : "slide-in-right 0.25s ease-out" }}
     >

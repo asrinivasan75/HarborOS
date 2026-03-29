@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import Header from "@/app/components/Header";
 import AlertFeed from "@/app/components/AlertFeed";
 import MapView from "@/app/components/MapView";
 import VesselDetailPanel from "@/app/components/VesselDetail";
-import DemoMode from "@/app/components/DemoMode";
+import FeatureTour from "@/app/components/FeatureTour";
 import RegionSummary from "@/app/components/RegionSummary";
 import RiskDistributionPanel from "@/app/components/RiskDistribution";
 import Toast from "@/app/components/Toast";
@@ -16,7 +17,15 @@ import type { Vessel, VesselDetail, Alert, Geofence, IngestionStatus, Region, Ri
 
 const REFRESH_INTERVAL_MS = 5000;
 
-export default function Dashboard() {
+export default function DashboardPage() {
+  return (
+    <Suspense>
+      <Dashboard />
+    </Suspense>
+  );
+}
+
+function Dashboard() {
   const [vessels, setVessels] = useState<Vessel[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [alertsTotal, setAlertsTotal] = useState(0);
@@ -40,6 +49,11 @@ export default function Dashboard() {
   const [detailClosing, setDetailClosing] = useState(false);
   const [analyticsClosing, setAnalyticsClosing] = useState(false);
   const [connectionOk, setConnectionOk] = useState(true);
+  const [featureTourActive, setFeatureTourActive] = useState(false);
+  const [tourStartAt, setTourStartAt] = useState(0);
+  const [showContinueDemo, setShowContinueDemo] = useState(false);
+  const searchParams = useSearchParams();
+  const autoTour = searchParams.get("tour") === "1";
   const liveVesselsRef = useRef<Vessel[]>([]);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -91,6 +105,14 @@ export default function Dashboard() {
     }
     loadData();
   }, []);
+
+  // Auto-start feature tour from URL param
+  useEffect(() => {
+    if (autoTour && !loading && !featureTourActive) {
+      const timer = setTimeout(() => setFeatureTourActive(true), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [autoTour, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh
   useEffect(() => {
@@ -372,7 +394,7 @@ export default function Dashboard() {
             }).catch(() => {});
           }}
         />
-        <div className="flex-1 relative">
+        <div className="flex-1 relative" data-tour="map">
           <MapView
             vessels={vessels}
             geofences={geofences}
@@ -383,29 +405,37 @@ export default function Dashboard() {
             onMapCenterChange={setMapCenter}
             onMapClick={setMapClickFocus}
           />
-          <DemoMode
-            onFlyTo={(center, zoom) => {
-              setMapClickFocus(null);
-              setMapTarget({ center, zoom, _t: Date.now() });
+          <FeatureTour
+            active={featureTourActive}
+            startAt={tourStartAt}
+            onComplete={() => {
+              setFeatureTourActive(false);
+              // After feature tour phase (startAt=0), show Continue Demo button
+              if (tourStartAt === 0) setShowContinueDemo(true);
             }}
-            onSelectVessel={handleSelectVessel}
             onSelectRegion={handleRegionChange}
-            onDeselectVessel={() => { if (selectedVessel) handleCloseDetail(); else { setSelectedVessel(null); setSelectedAlertId(null); } }}
-            onShowAnalytics={(show) => {
-              if (show && !showAnalytics) handleToggleAnalytics();
-              else if (!show && showAnalytics) handleToggleAnalytics();
-            }}
-            darkHorizonId="v-dark-horizon"
-            jadeStarId="v-jade-star"
-            darkOpticalId="v-dark-optical-1"
-            normalVesselIds={[
-              "v-ever-forward",
-              "v-pacific-guardian",
-              "v-port-valor",
-              "v-maria-del-mar",
-              "v-catalina-express",
-            ]}
+            onSelectVessel={handleSelectVessel}
+            onDeselectVessel={() => { if (selectedVessel) handleCloseDetail(); }}
+            onToggleAnalytics={handleToggleAnalytics}
+            onFlyTo={(center, zoom) => setMapTarget({ center, zoom, _t: Date.now() })}
+            analyticsOpen={showAnalytics}
+            activeRegion={activeRegion}
           />
+          {showContinueDemo && !featureTourActive && (
+            <button
+              onClick={() => {
+                setShowContinueDemo(false);
+                setTourStartAt(6);
+                setFeatureTourActive(true);
+              }}
+              className="absolute top-3 left-3 z-50 flex items-center gap-1.5 bg-cyan-600/90 hover:bg-cyan-500 text-white text-[11px] font-semibold px-3 py-1.5 rounded-lg shadow-md shadow-cyan-500/15 transition-colors"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5,3 19,12 5,21" />
+              </svg>
+              Continue Demo
+            </button>
+          )}
           {(showAnalytics || analyticsClosing) && (
             <RiskDistributionPanel
               data={analyticsData}

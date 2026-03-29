@@ -424,6 +424,7 @@ export default function VesselDetailPanel({
 
   return (
     <div
+      data-tour="vessel-detail"
       className="w-[360px] bg-[#0d1320] border-l border-[#1a2235] flex flex-col shrink-0 overflow-y-auto shadow-2xl shadow-black/50"
       style={{ animation: closing ? "slide-out-right 0.2s ease-in forwards" : "slide-in-right 0.25s ease-out" }}
     >
@@ -764,7 +765,7 @@ export default function VesselDetailPanel({
 
       {/* Verification Action */}
       {riskScore >= RISK_THRESHOLDS.monitor && (
-        <div className="px-4 py-3">
+        <div className="px-4 py-3" data-tour="satellite-section">
           <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Verification</h3>
           {verification ? (
             <SatelliteVerificationResult

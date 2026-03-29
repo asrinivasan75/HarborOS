@@ -21,13 +21,14 @@ from app.database import engine, SessionLocal, Base, init_db
 from app.models.domain import (
     VesselORM, PositionReportORM, GeofenceORM,
     AlertORM, AnomalySignalORM, RiskHistoryORM,
+    VerificationRequestORM,
 )
 from app.services.alert_service import generate_alerts_for_all_vessels
 
 # LA Harbor center: ~33.735N, 118.265W
 CENTER_LAT = 33.735
 CENTER_LON = -118.265
-BASE_TIME = datetime(2026, 3, 27, 8, 0, 0)  # 0800 local
+BASE_TIME = datetime.utcnow() - timedelta(hours=2)  # Always 2h ago so detect_dark_vessel doesn't false-positive
 
 
 # ── Vessel Definitions ─────────────────────────────────
@@ -74,6 +75,64 @@ VESSELS = [
         "imo": None,
         "callsign": None,
         "destination": "UNKNOWN",
+    },
+
+    # ── Moderate suspicion ─────────────────────────────
+
+    # Zone lingerer — tanker drifting near LNG security zone
+    {
+        "id": "v-aegean-voyager",
+        "mmsi": "241234567",
+        "name": "AEGEAN VOYAGER",
+        "vessel_type": "tanker",
+        "flag_state": "Greece",
+        "length": 174.0, "beam": 28.0, "draft": 10.5,
+        "imo": "9812345",
+        "callsign": "SV2AEG",
+        "destination": "LONG BEACH",
+        "inspection_deficiencies": 1,
+    },
+
+    # Erratic fishing vessel — speed anomalies + heading changes near restricted zone
+    {
+        "id": "v-ocean-phantom",
+        "mmsi": "416789012",
+        "name": "OCEAN PHANTOM",
+        "vessel_type": "fishing",
+        "flag_state": "Taiwan",
+        "length": 35.0, "beam": 8.0, "draft": 3.2,
+        "imo": None,
+        "callsign": None,
+        "destination": "UNKNOWN",
+        "inspection_deficiencies": 3,
+    },
+
+    # Cargo with AIS gap + unusual speed profile
+    {
+        "id": "v-northern-spirit",
+        "mmsi": "636098765",
+        "name": "NORTHERN SPIRIT",
+        "vessel_type": "cargo",
+        "flag_state": "Liberia",
+        "length": 145.0, "beam": 22.0, "draft": 8.4,
+        "imo": "9654321",
+        "callsign": "A8NS9",
+        "destination": "SAN PEDRO",
+        "inspection_deficiencies": 2,
+    },
+
+    # Tanker loitering in anchorage with no destination
+    {
+        "id": "v-caspian-trader",
+        "mmsi": "256345678",
+        "name": "CASPIAN TRADER",
+        "vessel_type": "tanker",
+        "flag_state": "Malta",
+        "length": 130.0, "beam": 20.0, "draft": 7.8,
+        "imo": "9543210",
+        "callsign": None,
+        "destination": "UNKNOWN",
+        "inspection_deficiencies": 2,
     },
 
     # ── Normal traffic ──────────────────────────────────
@@ -531,41 +590,67 @@ def generate_normal_track(
 
 
 def generate_suspicious_track() -> list[dict]:
-    """Generate the MV DARK HORIZON suspicious track.
+    """Generate the MV DARK HORIZON suspicious track — dense, multi-phase.
 
-    Behavior: approaches from south, enters restricted terminal zone,
-    loiters with erratic speed, has AIS gap, then resumes.
+    ~120 position points across 7 phases:
+    1. Normal approach from south (15 pts)
+    2. Sudden deceleration + course change (8 pts)
+    3. AIS gap — 18 minutes silence
+    4. Reappears inside restricted terminal zone, loitering (25 pts)
+    5. High-speed sprint toward LNG security zone (10 pts)
+    6. Slow circling / dead-in-water near LNG zone (20 pts)
+    7. Erratic drift toward environmental preserve (15 pts)
+    8. Second AIS gap — 8 minutes
+    9. Final position cluster near anchorage (12 pts)
     """
     positions = []
     t = BASE_TIME
 
-    # Phase 1: Normal approach from south (10 points)
-    lat, lon = 33.690, -118.268
-    for i in range(10):
+    # Phase 1: Normal approach from south at ~8 kt (15 points, 2 min intervals)
+    lat, lon = 33.680, -118.270
+    for i in range(15):
         positions.append({
             "timestamp": t,
-            "latitude": lat,
-            "longitude": lon,
-            "speed_over_ground": 8.0 + random.uniform(-0.5, 0.5),
-            "course_over_ground": 5 + random.uniform(-3, 3),
-            "heading": 5 + random.uniform(-2, 2),
+            "latitude": lat + random.uniform(-0.0003, 0.0003),
+            "longitude": lon + random.uniform(-0.0003, 0.0003),
+            "speed_over_ground": 8.2 + random.uniform(-0.4, 0.4),
+            "course_over_ground": 8 + random.uniform(-3, 3),
+            "heading": 8 + random.uniform(-2, 2),
         })
-        lat += 0.003
-        lon += random.uniform(-0.0005, 0.0005)
-        t += timedelta(minutes=2.5)
+        lat += 0.0028
+        lon += random.uniform(-0.0004, 0.0004)
+        t += timedelta(minutes=2)
 
-    # Phase 2: AIS gap — 12 minutes with no reports (skip)
-    t += timedelta(minutes=12)
+    # Phase 2: Sudden deceleration + erratic course change (8 points)
+    for i in range(8):
+        speed = max(0.2, 8.0 - i * 1.1 + random.uniform(-0.3, 0.3))
+        heading_val = 8 + i * 25 + random.uniform(-10, 10)  # veering hard
+        positions.append({
+            "timestamp": t,
+            "latitude": lat + random.uniform(-0.001, 0.001),
+            "longitude": lon + random.uniform(-0.001, 0.001),
+            "speed_over_ground": speed,
+            "course_over_ground": heading_val % 360,
+            "heading": (heading_val + random.uniform(-8, 8)) % 360,
+        })
+        lat += 0.0008 * math.cos(math.radians(heading_val))
+        lon += 0.0008 * math.sin(math.radians(heading_val)) / math.cos(math.radians(lat))
+        t += timedelta(minutes=2)
 
-    # Phase 3: Appears inside restricted terminal zone, loitering (20 points)
-    lat, lon = 33.750, -118.267  # Inside restricted zone
-    for i in range(20):
-        # Erratic speed: alternating 0 and 5-8 knots
-        if i % 3 == 0:
-            speed = random.uniform(0, 0.3)
+    # Phase 3: AIS gap — 18 minutes with no reports
+    t += timedelta(minutes=18)
+
+    # Phase 4: Reappears inside restricted terminal zone, loitering (25 points)
+    lat, lon = 33.750, -118.267  # Inside APM Terminal Restricted Zone
+    for i in range(25):
+        if i % 4 == 0:
+            speed = random.uniform(0, 0.3)  # Dead stop
+            heading_val = random.uniform(0, 360)
+        elif i % 4 == 1:
+            speed = random.uniform(5.5, 8.0)  # Sudden burst
             heading_val = random.uniform(0, 360)
         else:
-            speed = random.uniform(5, 8)
+            speed = random.uniform(1.5, 3.5)  # Slow creep
             heading_val = random.uniform(0, 360)
 
         positions.append({
@@ -574,20 +659,78 @@ def generate_suspicious_track() -> list[dict]:
             "longitude": lon + random.uniform(-0.002, 0.002),
             "speed_over_ground": speed,
             "course_over_ground": heading_val,
-            "heading": heading_val,
+            "heading": heading_val + random.uniform(-5, 5),
+        })
+        t += timedelta(minutes=2)
+
+    # Phase 5: High-speed sprint east toward LNG security zone (10 points)
+    lat, lon = 33.748, -118.260
+    heading_base = 95  # East
+    for i in range(10):
+        speed = 14.0 + random.uniform(-1, 2)  # Unusually fast for this area
+        positions.append({
+            "timestamp": t,
+            "latitude": lat + random.uniform(-0.0005, 0.0005),
+            "longitude": lon + random.uniform(-0.0005, 0.0005),
+            "speed_over_ground": speed,
+            "course_over_ground": heading_base + random.uniform(-4, 4),
+            "heading": heading_base + random.uniform(-3, 3),
+        })
+        nm_per_min = speed / 60
+        dist = nm_per_min * 1.5
+        lat += dist * math.cos(math.radians(heading_base)) / 60
+        lon += dist * math.sin(math.radians(heading_base)) / (60 * math.cos(math.radians(lat)))
+        t += timedelta(minutes=1.5)
+
+    # Phase 6: Slow circling near LNG security zone (20 points)
+    center_lat, center_lon = 33.745, -118.235
+    for i in range(20):
+        angle = (i * 18 + random.uniform(-8, 8)) % 360
+        r = 0.003 + random.uniform(-0.001, 0.001)
+        p_lat = center_lat + r * math.cos(math.radians(angle))
+        p_lon = center_lon + r * math.sin(math.radians(angle)) / math.cos(math.radians(center_lat))
+
+        speed = random.uniform(0.2, 2.5) if i % 5 != 0 else 0.0  # periodic dead stop
+        positions.append({
+            "timestamp": t,
+            "latitude": p_lat,
+            "longitude": p_lon,
+            "speed_over_ground": speed,
+            "course_over_ground": (angle + 90) % 360,
+            "heading": (angle + 90 + random.uniform(-10, 10)) % 360,
         })
         t += timedelta(minutes=2.5)
 
-    # Phase 4: Slow drift near security zone (15 points)
-    lat, lon = 33.745, -118.235  # Near LNG security zone
+    # Phase 7: Erratic drift toward environmental preserve (15 points)
+    lat, lon = 33.740, -118.250
     for i in range(15):
+        heading_val = 250 + random.uniform(-40, 40)  # SW-ish, erratic
+        speed = random.uniform(0.5, 4.0)
         positions.append({
             "timestamp": t,
-            "latitude": lat + random.uniform(-0.003, 0.003),
-            "longitude": lon + random.uniform(-0.003, 0.003),
-            "speed_over_ground": random.uniform(0.5, 2.0),
-            "course_over_ground": random.uniform(180, 270),
-            "heading": random.uniform(180, 270),
+            "latitude": lat + random.uniform(-0.002, 0.002),
+            "longitude": lon + random.uniform(-0.002, 0.002),
+            "speed_over_ground": speed,
+            "course_over_ground": heading_val % 360,
+            "heading": (heading_val + random.uniform(-15, 15)) % 360,
+        })
+        lat += 0.0005 * math.cos(math.radians(heading_val))
+        lon += 0.0005 * math.sin(math.radians(heading_val)) / math.cos(math.radians(lat))
+        t += timedelta(minutes=2)
+
+    # Phase 8: Second AIS gap — 8 minutes
+    t += timedelta(minutes=8)
+
+    # Phase 9: Final position cluster near anchorage (12 points)
+    lat, lon = 33.712, -118.220  # Near Anchorage A
+    for i in range(12):
+        positions.append({
+            "timestamp": t,
+            "latitude": lat + random.uniform(-0.001, 0.001),
+            "longitude": lon + random.uniform(-0.001, 0.001),
+            "speed_over_ground": random.uniform(0, 0.5),
+            "course_over_ground": random.uniform(0, 360),
+            "heading": random.uniform(0, 360),
         })
         t += timedelta(minutes=2.5)
 
@@ -973,8 +1116,164 @@ def seed():
                 details_json=json.dumps(sig["details"]),
             ))
         alerts.append(jade_star_alert)
+
+        # MV DARK HORIZON — the demo star, loaded with signals
+        for ea in db.query(AlertORM).filter(AlertORM.vessel_id == "v-dark-horizon").all():
+            db.query(AnomalySignalORM).filter(AnomalySignalORM.alert_id == ea.id).delete()
+            db.delete(ea)
+
+        dark_horizon_alert_id = str(uuid.uuid4())
+        dark_horizon_signals = [
+            {
+                "anomaly_type": "ais_gap",
+                "severity": 0.88,
+                "description": (
+                    "Two AIS transmission gaps detected: 18 minutes (08:46–09:04 UTC) and "
+                    "8 minutes (11:22–11:30 UTC). Vessel reappeared 2.1 nm from last known "
+                    "position after first gap — inside APM Terminal Restricted Zone. "
+                    "Gap duration and positional displacement exceed normal equipment failure patterns."
+                ),
+                "details": {
+                    "gaps": [
+                        {"start": "2026-03-27T08:46:00Z", "end": "2026-03-27T09:04:00Z", "duration_min": 18, "displacement_nm": 2.1},
+                        {"start": "2026-03-27T11:22:00Z", "end": "2026-03-27T11:30:00Z", "duration_min": 8, "displacement_nm": 0.8},
+                    ],
+                    "total_gaps": 2,
+                    "max_gap_min": 18,
+                    "intentional_confidence": "high",
+                },
+            },
+            {
+                "anomaly_type": "geofence_breach",
+                "severity": 0.92,
+                "description": (
+                    "Vessel entered APM Terminal Restricted Zone (gf-restricted-terminal) at 09:04 UTC "
+                    "and remained inside for approximately 50 minutes with loitering behavior. "
+                    "No port authority clearance on file. Additionally approached within 0.3 nm of "
+                    "LNG Terminal Security Zone perimeter at 10:18 UTC."
+                ),
+                "details": {
+                    "breached_zones": [
+                        {"zone_id": "gf-restricted-terminal", "zone_name": "APM Terminal Restricted Zone", "severity": "high", "duration_min": 50},
+                        {"zone_id": "gf-security-zone-lng", "zone_name": "LNG Terminal Security Zone", "severity": "high", "approach_nm": 0.3},
+                    ],
+                    "clearance_verified": False,
+                },
+            },
+            {
+                "anomaly_type": "loitering",
+                "severity": 0.70,
+                "description": (
+                    "Loitering detected in restricted terminal zone: 25 position reports "
+                    "over 50 minutes within a 0.4 nm radius. Speed oscillated between 0–8 kt with "
+                    "no consistent heading — inconsistent with cargo operations or anchorage waiting."
+                ),
+                "details": {
+                    "duration_min": 50,
+                    "radius_nm": 0.4,
+                    "position_count": 25,
+                    "avg_speed_kt": 2.3,
+                    "speed_variance": 6.8,
+                    "heading_variance_deg": 142,
+                },
+            },
+            {
+                "anomaly_type": "route_deviation",
+                "severity": 0.55,
+                "description": (
+                    "Vessel declared destination 'UNKNOWN' with no filed voyage plan. Track shows "
+                    "low correlation with standard LA Harbor approach routes. Course changed >90° "
+                    "on 4 occasions."
+                ),
+                "details": {
+                    "declared_destination": "UNKNOWN",
+                    "voyage_plan_filed": False,
+                    "course_changes_over_90deg": 4,
+                    "route_correlation_pct": 18,
+                },
+            },
+            {
+                "anomaly_type": "identity_anomaly",
+                "severity": 0.85,
+                "description": (
+                    "Multiple identity red flags: IMO number missing (required for cargo vessels "
+                    ">300 GT), callsign not registered, flag state (Marshall Islands) on enhanced "
+                    "monitoring list. 4 inspection deficiencies from last PSC inspection (Jun 2025). "
+                    "MMSI 538006789 has no prior port calls in USCG database."
+                ),
+                "details": {
+                    "missing_imo": True,
+                    "missing_callsign": True,
+                    "flag_state_risk": "elevated",
+                    "inspection_deficiencies": 4,
+                    "prior_port_calls": 0,
+                    "psc_detention_history": "unknown",
+                },
+            },
+        ]
+
+        dark_horizon_alert = AlertORM(
+            id=dark_horizon_alert_id,
+            vessel_id="v-dark-horizon",
+            risk_score=84.0,
+            recommended_action="escalate",
+            explanation=(
+                "MV DARK HORIZON exhibits 5 anomaly signals across identity, spatial, and behavioral "
+                "dimensions. Vessel went dark twice before appearing inside APM Terminal Restricted Zone "
+                "with sustained loitering. No IMO, no callsign, no voyage plan, Marshall Islands flag. "
+                "Recommend USCG verification and potential boarding."
+            ),
+            anomaly_signals_json=json.dumps(dark_horizon_signals),
+        )
+        db.add(dark_horizon_alert)
+        for sig in dark_horizon_signals:
+            db.add(AnomalySignalORM(
+                alert_id=dark_horizon_alert_id,
+                anomaly_type=sig["anomaly_type"],
+                severity=sig["severity"],
+                description=sig["description"],
+                details_json=json.dumps(sig["details"]),
+            ))
+        alerts.append(dark_horizon_alert)
+
+        # Satellite verification for Dark Horizon
+        dh_vr_id = str(uuid.uuid4())
+        dh_vr = VerificationRequestORM(
+            id=dh_vr_id,
+            alert_id=dark_horizon_alert_id,
+            vessel_id="v-dark-horizon",
+            status="completed",
+            asset_type="satellite",
+            asset_id="SENTINEL-2A",
+            created_at=BASE_TIME + timedelta(hours=2),
+            updated_at=BASE_TIME + timedelta(hours=2, minutes=3),
+            result_confidence=0.67,
+            result_notes=None,
+            result_media_ref=f"/api/satellite/verification-image/{dh_vr_id}?bbox=-118.275,33.705,-118.225,33.755",
+            satellite_source="copernicus",
+            catalog_status="hit",
+            request_lat=33.745,
+            request_lng=-118.235,
+            bbox_west=-118.275,
+            bbox_south=33.705,
+            bbox_east=-118.225,
+            bbox_north=33.755,
+            search_spread_deg=0.05,
+            search_days_back=5,
+            search_max_cloud_cover=30.0,
+            scene_acquired_at=BASE_TIME - timedelta(hours=6),
+            scene_satellite="Sentinel-2A",
+            scene_resolution_m=10.0,
+            scene_cloud_cover_pct=12.3,
+            scene_status="delivered",
+            scene_catalog_id="S2A_MSIL2A_20260327T020000_LA_HARBOR",
+            scene_note=None,
+        )
+        db.add(dh_vr)
+
         db.commit()
-        print(f"  + 2 manual demo alerts (dark optical, spoofing)")
+        print(f"  + 3 manual demo alerts (dark horizon, dark optical, spoofing)")
+        print(f"  + 1 satellite verification request (dark horizon)")
 
         # Seed risk history for sparkline visualization (simulate 3 hours of trend data)
         print("Seeding risk history for sparkline trends...")

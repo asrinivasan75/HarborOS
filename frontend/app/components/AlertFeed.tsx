@@ -95,7 +95,7 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
   }, [alerts, sortKey, ascending, search]);
 
   return (
-    <div className="w-72 bg-[#0d1320] border-r border-[#1a2235] flex flex-col shrink-0">
+    <div className="w-72 bg-[#0d1320] border-r border-[#1a2235] flex flex-col shrink-0" data-tour="alerts">
       {/* Header + Search */}
       <div className="px-3 py-2 border-b border-[#1a2235]">
         <div className="flex items-center justify-between mb-2">
@@ -123,7 +123,7 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
       </div>
 
       {/* Filters + Sort — single row */}
-      <div className="px-3 py-1.5 flex gap-1 border-b border-[#1a2235]">
+      <div className="px-3 py-1.5 flex gap-1 border-b border-[#1a2235]" data-tour="alert-controls">
         <button
           onClick={() => onStatusFilterChange("active")}
           className={`text-[9px] font-semibold uppercase px-2 py-1 rounded transition-all ${

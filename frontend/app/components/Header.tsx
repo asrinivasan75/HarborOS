@@ -18,7 +18,7 @@ export default function Header({
   return (
     <header className="h-14 bg-[#0d1320] border-b border-[#1a2235] flex items-center justify-between px-5 shrink-0">
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2.5">
+        <Link href="/start" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
           <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400">
               <path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" />
@@ -32,7 +32,7 @@ export default function Header({
               Maritime Awareness
             </span>
           </div>
-        </div>
+        </Link>
 
       </div>
 
@@ -46,6 +46,7 @@ export default function Header({
         <div className="h-6 w-px bg-[#1a2235] mx-2" />
 
         <button
+          data-tour="analytics-btn"
           onClick={onToggleAnalytics}
           className={`text-[10px] transition-colors font-medium tracking-wider uppercase px-2 py-1.5 rounded-lg ${
             analyticsOpen

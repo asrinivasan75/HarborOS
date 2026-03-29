@@ -87,7 +87,7 @@ def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
             continue
 
         # Skip demo vessels whose alerts are manually seeded
-        if vessel.id in ("v-jade-star", "v-dark-optical-1"):
+        if vessel.id in ("v-jade-star", "v-dark-optical-1", "v-dark-horizon"):
             continue
 
         if not positions:

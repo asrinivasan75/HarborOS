@@ -12,6 +12,7 @@ interface DemoModeProps {
   jadeStarId: string;
   darkOpticalId: string;
   normalVesselIds: string[];
+  autoStart?: boolean;
 }
 
 interface DemoStage {
@@ -331,7 +332,6 @@ function buildStages(): DemoStage[] {
       ),
       action: (props) => {
         props.onDeselectVessel();
-        props.onShowAnalytics(true);
       },
     },
 
@@ -365,6 +365,7 @@ function buildStages(): DemoStage[] {
 }
 
 export default function DemoMode(props: DemoModeProps) {
+  const ANALYTICS_STAGE = 7;
   const [active, setActive] = useState(false);
   const [step, setStep] = useState(0);
   const [transitioning, setTransitioning] = useState(false);
@@ -434,7 +435,15 @@ export default function DemoMode(props: DemoModeProps) {
   );
 
   const handleNext = useCallback(() => {
-    if (step < stages.length - 1) {
+    if (step === ANALYTICS_STAGE) {
+      // End demo — user clicks the real Analytics button themselves
+      clearAllTimeouts();
+      setVisible(false);
+      scheduleTimeout(() => {
+        setActive(false);
+        setStep(0);
+      }, 300);
+    } else if (step < stages.length - 1) {
       advanceTo(step + 1);
     } else {
       // Finish demo
@@ -484,6 +493,11 @@ export default function DemoMode(props: DemoModeProps) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [active, handleNext, handlePrev, handleClose]);
+
+  // Auto-start when prop is set
+  useEffect(() => {
+    if (props.autoStart && !active) handleStart();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!active) {
     return (
@@ -599,7 +613,7 @@ export default function DemoMode(props: DemoModeProps) {
                     : "bg-blue-600/80 hover:bg-blue-500 text-white"
                 }`}
               >
-                {step === stages.length - 1 ? "Finish Demo" : "Next"}
+                {step === ANALYTICS_STAGE ? "Open Analytics" : step === stages.length - 1 ? "Finish Demo" : "Next"}
               </button>
             </div>
 
