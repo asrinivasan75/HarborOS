@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import type { VesselDetail as VesselDetailType, VerificationRequest, RiskHistoryPoint } from "@/app/lib/api";
 import { api } from "@/app/lib/api";
 import { riskTextClass, riskLevel, RISK_THRESHOLDS } from "@/app/lib/risk";
@@ -52,13 +52,6 @@ function actionStyle(action: string) {
 }
 
 const riskColor = riskTextClass;
-
-function severityBarColor(severity: number): string {
-  if (severity >= 0.55) return "bg-red-400";
-  if (severity >= 0.35) return "bg-orange-400";
-  if (severity >= 0.2) return "bg-yellow-400";
-  return "bg-green-400";
-}
 
 function severityLabel(severity: number): { text: string; color: string } {
   if (severity >= 0.55) return { text: "Critical", color: "text-red-400" };
@@ -218,7 +211,6 @@ function formatReportHTML(report: Record<string, unknown>): string {
   return html;
 }
 
-export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint, onAlertAction, closing }: VesselDetailProps) {
 function RiskSparkline({ data }: { data: RiskHistoryPoint[] }) {
   if (data.length < 2) return null;
 
@@ -286,7 +278,7 @@ function RiskSparkline({ data }: { data: RiskHistoryPoint[] }) {
   );
 }
 
-export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint, onAlertAction }: VesselDetailProps) {
+export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint, onAlertAction, closing }: VesselDetailProps) {
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -317,7 +309,7 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
     } finally {
       setExportLoading(false);
     }
-  }, [vessel.id, vessel.name]);
+  }, [vessel.id]);
 
   // Alert action state
   const [alertStatus, setAlertStatus] = useState<string | null>(null);
@@ -781,7 +773,7 @@ interface SatVrProps {
 
 function SatelliteVerificationResult({ verification, vesselPosition, vesselName, onFootprint }: SatVrProps) {
   const [liveVr, setLiveVr] = useState(verification);
-  const [lastFootprintKey, setLastFootprintKey] = useState<string | null>(null);
+  const lastFootprintKeyRef = useRef<string | null>(null);
 
   // Poll for satellite next-pass completion
   useEffect(() => {
@@ -800,7 +792,7 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
   useEffect(() => {
     const footprintKey = `${liveVr.id}:${liveVr.updated_at}:${liveVr.result_media_ref ?? ""}`;
 
-    if (liveVr.status === "completed" && vesselPosition && onFootprint && lastFootprintKey !== footprintKey) {
+    if (liveVr.status === "completed" && vesselPosition && onFootprint && lastFootprintKeyRef.current !== footprintKey) {
       const satData = liveVr.result_notes ? (() => { try { return JSON.parse(liveVr.result_notes); } catch { return null; } })() : null;
       const media = satData?.source === "copernicus" ? parseSatelliteMediaRef(liveVr.result_media_ref) : {};
       onFootprint({
@@ -812,9 +804,9 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
         bbox: media.bbox,
         renderToken: liveVr.updated_at,
       });
-      setLastFootprintKey(footprintKey);
+      lastFootprintKeyRef.current = footprintKey;
     }
-  }, [liveVr.id, liveVr.status, liveVr.updated_at, liveVr.result_media_ref, vesselPosition, vesselName, onFootprint, liveVr.result_notes, lastFootprintKey]);
+  }, [liveVr.id, liveVr.status, liveVr.updated_at, liveVr.result_media_ref, vesselPosition, vesselName, onFootprint, liveVr.result_notes]);
 
   // Parse satellite-specific notes
   const satData = liveVr.result_notes ? (() => {
