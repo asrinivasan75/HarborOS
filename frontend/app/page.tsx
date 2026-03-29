@@ -414,9 +414,9 @@ export default function Dashboard() {
             />
           )}
         </div>
-        {(selectedVessel || detailClosing) && (
+        {selectedVessel && (
           <VesselDetailPanel
-            vessel={selectedVessel!}
+            vessel={selectedVessel}
             alertId={selectedAlertId}
             onSatelliteOverlay={setSatelliteOverlay}
             verificationFocus={verificationFocus}
