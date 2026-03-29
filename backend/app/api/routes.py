@@ -8,27 +8,30 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from global_land_mask import globe
-import numpy as np
+def _classify_vessel_status(
+    positions: list,
+    min_stationary_reports: int = 3,
+) -> tuple[bool, str | None]:
+    """Classify vessel activity status from position history.
 
-
-def _is_deep_inland(lat: float, lon: float) -> bool:
-    """Check if position is clearly inland, not just near a port/dock.
-
-    global_land_mask has ~1km resolution so vessels at berth often register
-    as 'on land'. Check a 3km neighborhood — if any nearby point is water,
-    the vessel is likely at a coastal facility, not landlocked.
+    Returns (is_inactive, status_reason).
+    Only flags stationary vessels (sustained near-zero speed).
     """
-    if not globe.is_land(lat, lon):
-        return False
-    # Check points at ~0.05° (~5.5km) radius — covers large port complexes
-    for dlat in (-0.05, -0.025, 0, 0.025, 0.05):
-        for dlon in (-0.05, -0.025, 0, 0.025, 0.05):
-            if dlat == 0 and dlon == 0:
-                continue
-            if not globe.is_land(lat + dlat, lon + dlon):
-                return False  # Near water — likely a port/dock
-    return True  # All neighbors are land — truly inland
+    if not positions:
+        return False, None
+
+    if len(positions) >= min_stationary_reports:
+        recent = positions[-min_stationary_reports:]
+        all_stopped = all(
+            p.speed_over_ground is not None and p.speed_over_ground <= 0.3
+            for p in recent
+        )
+        if all_stopped:
+            duration_min = (recent[-1].timestamp - recent[0].timestamp).total_seconds() / 60
+            if duration_min >= 5:
+                return True, f"Stationary for {int(duration_min)} min"
+
+    return False, None
 
 from app.database import get_db
 from app.models.domain import (
@@ -159,14 +162,13 @@ def list_vessels(
     for v, pos, alert in rows:
         is_inactive = False
         status_reason = None
-        
-        if pos:
-            if _is_deep_inland(pos.latitude, pos.longitude):
-                is_inactive = True
-                status_reason = "Inactive (Position over land)"
-            elif pos.speed_over_ground is not None and pos.speed_over_ground <= 0.1:
-                is_inactive = True
-                status_reason = f"Inactive (Speed {pos.speed_over_ground} kts)"
+
+        if not pos:
+            is_inactive = True
+            status_reason = "No position data"
+        elif pos.speed_over_ground is not None and pos.speed_over_ground <= 0.1:
+            is_inactive = True
+            status_reason = "Stationary"
 
         items.append(VesselSchema(
             id=v.id,
@@ -235,23 +237,16 @@ def get_vessel_detail(vessel_id: str, db: Session = Depends(get_db)):
     is_resolved = False
     status_reason = None
     
-    # Check if latest alert is actually resolved
+    # Check if latest alert was resolved by an operator (not auto-resolved by system)
     latest_alert = db.query(AlertORM).filter(AlertORM.vessel_id == vessel_id).order_by(AlertORM.created_at.desc()).first()
-    if latest_alert and latest_alert.status == "resolved":
-        is_resolved = True
-        status_reason = "Manually Resolved"
+    if latest_alert and latest_alert.status in ("resolved", "dismissed"):
+        if latest_alert.operator_notes:
+            is_resolved = True
+            status_reason = f"Resolved — {latest_alert.operator_notes}"
     
     # Check physical state
-    if positions:
-        latest = positions[-1]
-        if _is_deep_inland(latest.latitude, latest.longitude):
-            is_inactive = True
-            if not is_resolved:
-                status_reason = "Inactive (Position over land)"
-        elif latest.speed_over_ground is not None and latest.speed_over_ground <= 0.1:
-            is_inactive = True
-            if not is_resolved:
-                status_reason = f"Inactive (Speed {latest.speed_over_ground} kts)"
+    if positions and not is_resolved:
+        is_inactive, status_reason = _classify_vessel_status(positions)
 
     return VesselDetailSchema(
         id=vessel.id,
@@ -441,7 +436,7 @@ def get_vessel_risk(vessel_id: str, db: Session = Depends(get_db)):
 def list_alerts(
     status: str | None = Query(None, description="Filter by status"),
     region: str | None = Query(None, description="Filter by region key"),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(500, ge=1, le=2000),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):

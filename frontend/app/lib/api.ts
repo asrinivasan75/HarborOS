@@ -196,7 +196,7 @@ export const api = {
     return fetchAPI<PaginatedResponse<Vessel>>(`/vessels?${params}`);
   },
   getVesselDetail: (id: string) => fetchAPI<VesselDetail>(`/vessels/${id}`),
-  getAlerts: (status?: string, region?: string, limit = 50, offset = 0) => {
+  getAlerts: (status?: string, region?: string, limit = 500, offset = 0) => {
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (region) params.set("region", region);

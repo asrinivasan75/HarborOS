@@ -2,7 +2,7 @@
 export const RISK_THRESHOLDS = {
   escalate: 80,
   verify: 60,
-  monitor: 40,
+  monitor: 35,
 } as const;
 
 export const RISK_COLORS = {

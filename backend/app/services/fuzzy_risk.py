@@ -225,6 +225,6 @@ def marsec_action(score: float) -> str:
         return "escalate"   # MARSEC 3
     elif score >= 60:
         return "verify"     # MARSEC 2
-    elif score >= 40:
+    elif score >= 35:
         return "monitor"    # MARSEC 1 (elevated)
     return "ignore"
