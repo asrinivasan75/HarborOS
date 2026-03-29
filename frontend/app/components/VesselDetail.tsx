@@ -85,154 +85,6 @@ function formatAcquisitionTime(datetimeValue: string | null): string {
   return new Date(datetimeValue).toLocaleString();
 }
 
-function formatReportHTML(report: Record<string, unknown>): string {
-  const v = report.vessel as Record<string, unknown>;
-  const pos = report.latest_position as Record<string, unknown> | null;
-  const risk = report.risk_assessment as Record<string, unknown>;
-  const signals = report.anomaly_signals as Record<string, unknown>[];
-  const trail = report.position_trail as Record<string, unknown>[];
-  const audit = report.alert_audit_trail as Record<string, unknown>[];
-  const verifications = report.verification_requests as Record<string, unknown>[];
-
-  const riskScore = risk.score as number;
-  const riskColor = riskScore >= RISK_THRESHOLDS.escalate ? "#ef4444" : riskScore >= RISK_THRESHOLDS.verify ? "#f97316" : riskScore >= RISK_THRESHOLDS.monitor ? "#f59e0b" : "#22c55e";
-
-  const css = `
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1e293b; padding: 40px; max-width: 800px; margin: 0 auto; font-size: 13px; line-height: 1.5; }
-    h1 { font-size: 22px; margin-bottom: 4px; }
-    h2 { font-size: 15px; color: #475569; margin: 24px 0 10px; padding-bottom: 4px; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; letter-spacing: 0.05em; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #0f172a; }
-    .header-left h1 { color: #0f172a; }
-    .header-left p { color: #64748b; font-size: 12px; }
-    .risk-badge { text-align: center; padding: 12px 20px; border-radius: 8px; }
-    .risk-score { font-size: 36px; font-weight: 800; font-family: monospace; }
-    .risk-action { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; margin-top: 2px; }
-    table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 12px; }
-    th { text-align: left; padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 600; color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
-    td { padding: 5px 10px; border: 1px solid #e2e8f0; font-family: monospace; font-size: 11px; }
-    .signal { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; }
-    .signal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-    .signal-type { font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
-    .signal-severity { font-family: monospace; font-weight: 700; font-size: 12px; }
-    .signal-desc { color: #64748b; font-size: 12px; }
-    .explanation { background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 14px; margin: 8px 0 16px; color: #92400e; font-size: 12px; }
-    .meta-row { display: flex; gap: 24px; margin-bottom: 4px; }
-    .meta-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; }
-    .meta-value { font-family: monospace; }
-    .footer { margin-top: 30px; padding-top: 12px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 10px; text-align: center; }
-    @media print { body { padding: 20px; } }
-  `;
-
-  let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Incident Report - ${v.name}</title><style>${css}</style></head><body>`;
-
-  // Header
-  html += `<div class="header">
-    <div class="header-left">
-      <h1>${v.name}</h1>
-      <p>MMSI ${v.mmsi}${v.imo ? ` / IMO ${v.imo}` : ""} &middot; ${v.vessel_type} &middot; ${v.flag_state}</p>
-      <p style="margin-top:4px">Generated: ${new Date(report.generated_at as string).toLocaleString()}</p>
-    </div>
-    <div class="risk-badge" style="background:${riskColor}15; border: 1px solid ${riskColor}40">
-      <div class="risk-score" style="color:${riskColor}">${Math.round(riskScore)}</div>
-      <div class="risk-action" style="color:${riskColor}">${risk.recommended_action}</div>
-    </div>
-  </div>`;
-
-  // Explanation
-  if (risk.explanation) {
-    html += `<div class="explanation">${risk.explanation}</div>`;
-  }
-
-  // Vessel Details
-  html += `<h2>Vessel Details</h2><table>
-    <tr><th>Length</th><td>${v.length ? v.length + "m" : "N/A"}</td><th>Beam</th><td>${v.beam ? v.beam + "m" : "N/A"}</td><th>Draft</th><td>${v.draft ? v.draft + "m" : "N/A"}</td></tr>
-    <tr><th>Callsign</th><td>${v.callsign || "N/A"}</td><th>Destination</th><td>${v.destination || "N/A"}</td><th>Deficiencies</th><td>${v.inspection_deficiencies ?? 0}</td></tr>
-  </table>`;
-
-  // Position
-  if (pos) {
-    html += `<h2>Latest Position</h2>
-    <div class="meta-row">
-      <div><span class="meta-label">Lat</span> <span class="meta-value">${(pos.latitude as number).toFixed(5)}</span></div>
-      <div><span class="meta-label">Lon</span> <span class="meta-value">${(pos.longitude as number).toFixed(5)}</span></div>
-      <div><span class="meta-label">Speed</span> <span class="meta-value">${pos.speed_over_ground != null ? (pos.speed_over_ground as number).toFixed(1) + " kt" : "N/A"}</span></div>
-      <div><span class="meta-label">Course</span> <span class="meta-value">${pos.course_over_ground != null ? (pos.course_over_ground as number).toFixed(0) + "\u00B0" : "N/A"}</span></div>
-    </div>`;
-  }
-
-  // Anomaly Signals
-  if (signals?.length) {
-    html += `<h2>Anomaly Signals (${signals.length})</h2>`;
-    for (const s of signals) {
-      const sev = s.severity as number;
-      const sevLabel = sev >= 0.55 ? "CRITICAL" : sev >= 0.35 ? "HIGH" : sev >= 0.2 ? "MODERATE" : "LOW";
-      const sevColor = sev >= 0.55 ? "#ef4444" : sev >= 0.35 ? "#f97316" : sev >= 0.2 ? "#f59e0b" : "#22c55e";
-      const type = s.anomaly_type as string;
-      const label = ({"ais_gap":"AIS Dark Period","kinematic_implausibility":"Position Spoofing","geofence_breach":"Restricted Zone Breach","type_mismatch":"Identity Mismatch","collision_risk":"COLREGS Non-Compliance","loitering":"Loitering","speed_anomaly":"Speed Anomaly","heading_anomaly":"Course Anomaly","route_deviation":"Route Deviation","zone_lingering":"Zone Lingering","statistical_outlier":"Regional Outlier","dark_ship_optical":"Dark Ship (Optical)"} as Record<string,string>)[type] ?? type.replace(/_/g, " ");
-      html += `<div class="signal">
-        <div class="signal-header">
-          <span class="signal-type">${label}</span>
-          <span class="signal-severity" style="color:${sevColor}">${sevLabel}</span>
-        </div>
-        <div class="signal-desc">${s.description}</div>
-      </div>`;
-    }
-  }
-
-  // Position Trail
-  if (trail?.length) {
-    html += `<h2>Position Trail (${trail.length} points)</h2><table>
-    <tr><th>Timestamp</th><th>Lat</th><th>Lon</th><th>Speed</th><th>Course</th></tr>`;
-    for (const p of trail.slice(0, 30)) {
-      html += `<tr><td>${p.timestamp}</td><td>${p.latitude}</td><td>${p.longitude}</td><td>${p.speed_over_ground ?? "N/A"}</td><td>${p.course_over_ground ?? "N/A"}</td></tr>`;
-    }
-    if (trail.length > 30) html += `<tr><td colspan="5" style="text-align:center;color:#94a3b8">... ${trail.length - 30} more positions</td></tr>`;
-    html += `</table>`;
-  }
-
-  // Audit Trail
-  if (audit?.length) {
-    html += `<h2>Alert Audit Trail</h2>`;
-    for (const e of audit) {
-      html += `<div style="margin-bottom:4px"><strong>${e.timestamp}</strong> &mdash; ${e.action}${e.details ? ": " + e.details : ""}</div>`;
-    }
-  }
-
-  // Notes
-  if (report.operator_notes) {
-    html += `<h2>Operator Notes</h2><p>${report.operator_notes}</p>`;
-  }
-
-  // Verifications
-  if (verifications?.length) {
-    html += `<h2>Verification Requests</h2>`;
-    for (const vr of verifications) {
-      const satellite = vr.satellite as Record<string, unknown> | undefined;
-      const scene = satellite?.scene as Record<string, unknown> | undefined;
-      const bbox = satellite?.bbox as Record<string, unknown> | undefined;
-
-      html += `<div style="margin-bottom:8px"><strong>${vr.asset_type}</strong> (${vr.asset_id}) &mdash; Status: ${vr.status}`;
-      if (scene?.satellite) {
-        html += ` &middot; Scene: ${scene.satellite}`;
-      }
-      if (scene?.acquired_at) {
-        html += ` &middot; Acquired: ${scene.acquired_at}`;
-      }
-      if (scene?.status) {
-        html += ` &middot; Scene Status: ${scene.status}`;
-      }
-      if (bbox?.west != null && bbox?.south != null && bbox?.east != null && bbox?.north != null) {
-        html += ` &middot; BBox: ${bbox.west}, ${bbox.south}, ${bbox.east}, ${bbox.north}`;
-      }
-      html += `</div>`;
-    }
-  }
-
-  html += `<div class="footer">HarborOS Incident Report &middot; Maritime Awareness Platform &middot; CONFIDENTIAL</div>`;
-  html += `</body></html>`;
-  return html;
-}
 
 function RiskSparkline({ data }: { data: RiskHistoryPoint[] }) {
   if (data.length < 2) return null;
@@ -333,6 +185,8 @@ export default function VesselDetailPanel({
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportReport, setExportReport] = useState<Record<string, unknown> | null>(null);
+  const [showReport, setShowReport] = useState(false);
   const [riskHistory, setRiskHistory] = useState<RiskHistoryPoint[]>([]);
   const [satelliteInfo, setSatelliteInfo] = useState<SatelliteInfoResponse | null>(null);
   const [imageryTarget, setImageryTarget] = useState<"vessel" | "focus">("vessel");
@@ -462,24 +316,22 @@ export default function VesselDetailPanel({
     setActiveAcquisitionKey(null);
   }, [onSatelliteOverlay]);
 
-  const handleExportReport = useCallback(async () => {
-    setExportLoading(true);
-    try {
-      const report = await api.getVesselReport(vessel.id);
-      const html = formatReportHTML(report);
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write(html);
-        printWindow.document.close();
-        // Give it a moment to render, then trigger print (Save as PDF)
-        setTimeout(() => printWindow.print(), 500);
-      }
-    } catch (e) {
-      console.error("Export report failed:", e);
-    } finally {
-      setExportLoading(false);
+  const handleExportReport = useCallback(() => {
+    if (showReport) {
+      setShowReport(false);
+      return;
     }
-  }, [vessel.id]);
+    setExportLoading(true);
+    api.getVesselReport(vessel.id).then((report) => {
+      setExportReport(report);
+      setShowReport(true);
+    }).catch((e) => {
+      console.error("Export report failed:", e);
+    }).finally(() => {
+      setExportLoading(false);
+    });
+  }, [vessel.id, showReport]);
+
 
   // Alert action state
   const [alertStatus, setAlertStatus] = useState<string | null>(null);
@@ -556,6 +408,17 @@ export default function VesselDetailPanel({
   const level = riskLevel(riskScore);
   const action = level === "normal" ? "normal" : (vessel.recommended_action ?? "normal");
 
+  if (showReport && exportReport) {
+    return (
+      <div
+        className="w-[360px] bg-[#0d1320] border-l border-[#1a2235] flex flex-col shrink-0 overflow-y-auto shadow-2xl shadow-black/50"
+        style={{ animation: closing ? "slide-out-right 0.2s ease-in forwards" : "slide-in-right 0.25s ease-out" }}
+      >
+        <ReportView report={exportReport} onBack={() => setShowReport(false)} />
+      </div>
+    );
+  }
+
   return (
     <div
       className="w-[360px] bg-[#0d1320] border-l border-[#1a2235] flex flex-col shrink-0 overflow-y-auto shadow-2xl shadow-black/50"
@@ -574,9 +437,9 @@ export default function VesselDetailPanel({
             <button
               onClick={handleExportReport}
               disabled={exportLoading}
-              className="text-[10px] text-slate-500 hover:text-blue-400 uppercase tracking-wider transition-colors disabled:opacity-50"
+              className={`text-[10px] uppercase tracking-wider transition-colors disabled:opacity-50 ${showReport ? "text-blue-400" : "text-slate-500 hover:text-blue-400"}`}
             >
-              {exportLoading ? "..." : "Export"}
+              {exportLoading ? "..." : "More Info"}
             </button>
             <button
               onClick={onClose}
@@ -806,15 +669,15 @@ export default function VesselDetailPanel({
         <div className="grid grid-cols-3 gap-2 mt-2">
           <div className="bg-[#111827] rounded-lg p-2.5 border border-[#1a2235] text-center">
             <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-0.5">Length</span>
-            <span className="text-[12px] font-bold font-mono text-slate-300">{vessel.length ? `${vessel.length}m` : "\u2014"}</span>
+            <span className="text-[12px] font-bold font-mono text-slate-300">{vessel.length ? `${parseFloat(vessel.length.toFixed(1))}m` : "\u2014"}</span>
           </div>
           <div className="bg-[#111827] rounded-lg p-2.5 border border-[#1a2235] text-center">
             <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-0.5">Beam</span>
-            <span className="text-[12px] font-bold font-mono text-slate-300">{vessel.beam ? `${vessel.beam}m` : "\u2014"}</span>
+            <span className="text-[12px] font-bold font-mono text-slate-300">{vessel.beam ? `${parseFloat(vessel.beam.toFixed(1))}m` : "\u2014"}</span>
           </div>
           <div className="bg-[#111827] rounded-lg p-2.5 border border-[#1a2235] text-center">
             <span className="text-[9px] text-slate-600 uppercase tracking-wider block mb-0.5">Draft</span>
-            <span className="text-[12px] font-bold font-mono text-slate-300">{vessel.draft ? `${vessel.draft}m` : "\u2014"}</span>
+            <span className="text-[12px] font-bold font-mono text-slate-300">{vessel.draft ? `${parseFloat(vessel.draft.toFixed(1))}m` : "\u2014"}</span>
           </div>
         </div>
         {vessel.inspection_deficiencies > 0 && (
@@ -1166,6 +1029,111 @@ export default function VesselDetailPanel({
           )}
         </div>
       )}
+
+    </div>
+  );
+}
+
+
+function ReportView({ report, onBack }: { report: Record<string, unknown>; onBack: () => void }) {
+  const trail = report.position_trail as Record<string, unknown>[];
+  const audit = report.alert_audit_trail as Record<string, unknown>[];
+  const notes = report.operator_notes ? String(report.operator_notes) : null;
+
+  return (
+    <>
+      {/* Report Header */}
+      <div className="px-4 py-3 border-b border-[#1a2235] flex items-center">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-blue-400 transition-colors uppercase tracking-wider font-medium shrink-0"
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          Back
+        </button>
+        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex-1 text-center">More Info</span>
+        <button
+          onClick={() => {
+            const v = report.vessel as Record<string, unknown> | undefined;
+            if (v?.id) window.open(`/report?vesselId=${v.id}`, "_blank");
+          }}
+          className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-blue-400 transition-colors uppercase tracking-wider font-medium shrink-0"
+        >
+          Export
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Report Body */}
+      <div className="px-4 py-4 space-y-4">
+        {/* Position Trail */}
+        {trail?.length > 0 && (
+          <Section title={`Position Trail (${trail.length} points)`}>
+            <div className="bg-[#111827] rounded-lg border border-[#1a2235] overflow-hidden">
+              <div className="grid grid-cols-5 gap-px bg-[#1a2235] text-[9px] text-slate-500 uppercase tracking-wider font-medium">
+                <div className="bg-[#0d1320] px-2 py-1.5">Time</div>
+                <div className="bg-[#0d1320] px-2 py-1.5">Lat</div>
+                <div className="bg-[#0d1320] px-2 py-1.5">Lon</div>
+                <div className="bg-[#0d1320] px-2 py-1.5">Speed</div>
+                <div className="bg-[#0d1320] px-2 py-1.5">Course</div>
+              </div>
+              {trail.slice(0, 20).map((p, i) => (
+                <div key={i} className="grid grid-cols-5 gap-px bg-[#1a2235] text-[10px] font-mono text-slate-400">
+                  <div className="bg-[#0d1320] px-2 py-1">{new Date(String(p.timestamp)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                  <div className="bg-[#0d1320] px-2 py-1">{Number(p.latitude).toFixed(4)}</div>
+                  <div className="bg-[#0d1320] px-2 py-1">{Number(p.longitude).toFixed(4)}</div>
+                  <div className="bg-[#0d1320] px-2 py-1">{p.speed_over_ground != null ? Number(p.speed_over_ground).toFixed(1) : "—"}</div>
+                  <div className="bg-[#0d1320] px-2 py-1">{p.course_over_ground != null ? `${Number(p.course_over_ground).toFixed(0)}°` : "—"}</div>
+                </div>
+              ))}
+              {trail.length > 20 && (
+                <div className="text-center text-[9px] text-slate-600 py-1.5 bg-[#0d1320]">... {trail.length - 20} more</div>
+              )}
+            </div>
+          </Section>
+        )}
+
+        {/* Audit Trail */}
+        {audit?.length > 0 && (
+          <Section title="Audit Trail">
+            <div className="space-y-1">
+              {audit.map((e, i) => (
+                <div key={i} className="flex items-start gap-2 text-[10px]">
+                  <span className="text-slate-600 font-mono shrink-0">{new Date(String(e.timestamp)).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                  <span className="text-slate-400">{String(e.action)}{e.details ? `: ${String(e.details)}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* Notes */}
+        {notes && (
+          <Section title="Operator Notes">
+            <p className="text-[11px] text-slate-400 leading-relaxed">{notes}</p>
+          </Section>
+        )}
+
+        {/* Footer */}
+        <div className="text-center text-[9px] text-slate-700 pt-2 pb-4 border-t border-[#1a2235]">
+          HarborOS Incident Report · Maritime Awareness Platform · CONFIDENTIAL
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">{title}</h3>
+      {children}
     </div>
   );
 }

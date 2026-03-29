@@ -44,6 +44,8 @@ export default function Dashboard() {
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analyticsCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showAnalyticsRef = useRef(showAnalytics);
+  showAnalyticsRef.current = showAnalytics;
 
   const showToast = useCallback((message: string, type: ToastItem["type"] = "info") => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -157,8 +159,8 @@ export default function Dashboard() {
   const handleSelectVessel = useCallback(async (vesselId: string) => {
     // Cancel any pending close animation
     if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; setDetailClosing(false); }
-    // Close analytics if open
-    if (showAnalytics) {
+    // Close analytics if open (use ref to avoid stale closure from map markers)
+    if (showAnalyticsRef.current) {
       setAnalyticsClosing(true);
       if (analyticsCloseTimerRef.current) clearTimeout(analyticsCloseTimerRef.current);
       analyticsCloseTimerRef.current = setTimeout(() => {
@@ -184,7 +186,7 @@ export default function Dashboard() {
     } catch (e) {
       console.error("Failed to load vessel detail:", e);
     }
-  }, [alerts, showAnalytics]);
+  }, [alerts]);
 
   const handleSelectAlert = useCallback(async (alert: Alert) => {
     setSelectedAlertId(alert.id);
