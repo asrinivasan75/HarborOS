@@ -41,6 +41,7 @@ from app.models.domain import (
     AlertActionRequest, DetectionMetricsSchema,
     RiskDistributionSchema, RiskTierSchema, RiskHistogramBinSchema,
     VerificationRequestSchema, VerificationRequestCreate,
+    SatelliteBBoxSchema, SatelliteSearchSchema, SatelliteSceneSchema, SatelliteVerificationSchema,
     RiskAssessmentSchema, AnomalySignalSchema, PositionReportSchema,
     RiskHistorySchema, WeatherSchema,
 )
@@ -94,6 +95,89 @@ def _search_satellite_catalog(
             }
 
     return None, fallback_bbox, fallback_meta
+
+
+def _satellite_schema_for_verification(vr: VerificationRequestORM) -> SatelliteVerificationSchema | None:
+    bbox = None
+    if None not in (vr.bbox_west, vr.bbox_south, vr.bbox_east, vr.bbox_north):
+        bbox = SatelliteBBoxSchema(
+            west=vr.bbox_west,
+            south=vr.bbox_south,
+            east=vr.bbox_east,
+            north=vr.bbox_north,
+        )
+
+    search = None
+    if any(value is not None for value in (vr.search_spread_deg, vr.search_days_back, vr.search_max_cloud_cover)):
+        search = SatelliteSearchSchema(
+            spread_deg=vr.search_spread_deg,
+            days_back=vr.search_days_back,
+            max_cloud_cover=vr.search_max_cloud_cover,
+        )
+
+    scene = None
+    if any(
+        value is not None
+        for value in (
+            vr.scene_acquired_at,
+            vr.scene_satellite,
+            vr.scene_resolution_m,
+            vr.scene_cloud_cover_pct,
+            vr.scene_status,
+            vr.scene_catalog_id,
+            vr.scene_note,
+        )
+    ):
+        scene = SatelliteSceneSchema(
+            acquired_at=vr.scene_acquired_at,
+            satellite=vr.scene_satellite,
+            resolution_m=vr.scene_resolution_m,
+            cloud_cover_pct=vr.scene_cloud_cover_pct,
+            status=vr.scene_status,
+            catalog_id=vr.scene_catalog_id,
+            note=vr.scene_note,
+        )
+
+    if not any(
+        value is not None
+        for value in (
+            vr.satellite_source,
+            vr.catalog_status,
+            vr.request_lat,
+            vr.request_lng,
+            bbox,
+            search,
+            scene,
+        )
+    ):
+        return None
+
+    return SatelliteVerificationSchema(
+        source=vr.satellite_source,
+        catalog_status=vr.catalog_status,
+        request_lat=vr.request_lat,
+        request_lng=vr.request_lng,
+        bbox=bbox,
+        search=search,
+        scene=scene,
+    )
+
+
+def _serialize_verification_request(vr: VerificationRequestORM) -> VerificationRequestSchema:
+    return VerificationRequestSchema(
+        id=vr.id,
+        alert_id=vr.alert_id,
+        vessel_id=vr.vessel_id,
+        status=vr.status,
+        asset_type=vr.asset_type,
+        asset_id=vr.asset_id,
+        created_at=vr.created_at,
+        updated_at=vr.updated_at,
+        result_confidence=vr.result_confidence,
+        result_notes=vr.result_notes,
+        result_media_ref=vr.result_media_ref,
+        satellite=_satellite_schema_for_verification(vr),
+    )
 
 
 # ── Regions ────────────────────────────────────────────
@@ -394,17 +478,7 @@ def get_vessel_report(vessel_id: str, db: Session = Depends(get_db)):
         .all()
     )
     for vr in vrs:
-        verification_requests.append({
-            "id": vr.id,
-            "status": vr.status,
-            "asset_type": vr.asset_type,
-            "asset_id": vr.asset_id,
-            "created_at": vr.created_at.isoformat() if vr.created_at else None,
-            "updated_at": vr.updated_at.isoformat() if vr.updated_at else None,
-            "result_confidence": vr.result_confidence,
-            "result_notes": vr.result_notes,
-            "result_media_ref": vr.result_media_ref,
-        })
+        verification_requests.append(_serialize_verification_request(vr).model_dump(mode="json"))
 
     return {
         "vessel": {
@@ -724,284 +798,220 @@ def list_geofences(db: Session = Depends(get_db)):
 
 # ── Verification Requests ─────────────────────────────
 
+def _coerce_scene_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+
+    raw = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+
+
+def _set_satellite_metadata(
+    verification: VerificationRequestORM,
+    *,
+    source: str,
+    catalog_status: str | None,
+    request_lat: float,
+    request_lng: float,
+    bbox: list[float] | None,
+    search_meta: dict | None,
+    scene: dict,
+):
+    verification.satellite_source = source
+    verification.catalog_status = catalog_status
+    verification.request_lat = request_lat
+    verification.request_lng = request_lng
+
+    if bbox:
+        verification.bbox_west = bbox[0]
+        verification.bbox_south = bbox[1]
+        verification.bbox_east = bbox[2]
+        verification.bbox_north = bbox[3]
+
+    if search_meta:
+        verification.search_spread_deg = search_meta.get("spread_deg")
+        verification.search_days_back = search_meta.get("days_back")
+        verification.search_max_cloud_cover = search_meta.get("max_cloud_cover")
+
+    verification.scene_acquired_at = _coerce_scene_datetime(scene.get("acquired"))
+    verification.scene_satellite = scene.get("satellite")
+    verification.scene_resolution_m = scene.get("resolution_m")
+    verification.scene_cloud_cover_pct = scene.get("cloud_cover_pct")
+    verification.scene_status = scene.get("status")
+    verification.scene_catalog_id = scene.get("catalog_id")
+    verification.scene_note = scene.get("note")
+
+
+def _resolve_satellite_request_coordinates(
+    req: VerificationRequestCreate,
+    db: Session,
+) -> tuple[float, float]:
+    has_focus_lat = req.focus_lat is not None
+    has_focus_lng = req.focus_lng is not None
+    if has_focus_lat != has_focus_lng:
+        raise HTTPException(
+            status_code=400,
+            detail="focus_lat and focus_lng must be provided together.",
+        )
+    if has_focus_lat and has_focus_lng:
+        return req.focus_lat, req.focus_lng
+
+    latest_pos = (
+        db.query(PositionReportORM)
+        .filter(PositionReportORM.vessel_id == req.vessel_id)
+        .order_by(PositionReportORM.timestamp.desc())
+        .first()
+    )
+    if latest_pos:
+        return latest_pos.latitude, latest_pos.longitude
+
+    raise HTTPException(
+        status_code=400,
+        detail="No focus coordinates provided and the vessel has no latest position.",
+    )
+
+
+def _build_satellite_scene_reference(
+    now: datetime,
+    lat: float,
+    lng: float,
+) -> dict[str, object]:
+    from app.data_sources.sentinel_adapter import is_configured
+
+    if is_configured():
+        hit, bbox, search_meta = _search_satellite_catalog(lat, lng)
+        bbox_str = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
+
+        if hit:
+            cloud_cover = round(hit["cloud_cover"], 1) if hit["cloud_cover"] is not None else None
+            return {
+                "status": "completed",
+                "result_confidence": round(0.7 - ((hit["cloud_cover"] or 10) / 100) * 0.3, 2),
+                "result_media_ref": f"/api/satellite/verification-image/PLACEHOLDER?bbox={bbox_str}",
+                "satellite_source": "copernicus",
+                "catalog_status": "hit",
+                "bbox": bbox,
+                "search_meta": search_meta,
+                "scene": {
+                    "acquired": hit["datetime"],
+                    "satellite": hit["satellite"],
+                    "resolution_m": 10,
+                    "cloud_cover_pct": cloud_cover,
+                    "status": "delivered",
+                    "catalog_id": hit["id"],
+                    "note": None,
+                },
+            }
+
+        date_to = now.strftime("%Y-%m-%d")
+        date_from = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        return {
+            "status": "completed",
+            "result_confidence": 0.45,
+            "result_media_ref": (
+                f"/api/satellite/verification-image/PLACEHOLDER"
+                f"?bbox={bbox_str}&date_from={date_from}&date_to={date_to}"
+            ),
+            "satellite_source": "copernicus",
+            "catalog_status": "empty",
+            "bbox": bbox,
+            "search_meta": search_meta,
+            "scene": {
+                "acquired": None,
+                "satellite": "Sentinel-2",
+                "resolution_m": 10,
+                "cloud_cover_pct": None,
+                "status": "delivered",
+                "catalog_id": None,
+                "note": "No recent catalog hit for the vessel area. Rendering the latest available Copernicus mosaic.",
+            },
+        }
+
+    import random
+
+    days_ago = random.randint(1, 4)
+    cloud_cover = random.randint(5, 35)
+    return {
+        "status": "completed",
+        "result_confidence": round(0.7 - (cloud_cover / 100) * 0.3, 2),
+        "result_media_ref": f"s2_tile_{now.strftime('%Y%m%d')}_{days_ago}d_ago.tif",
+        "satellite_source": "simulated",
+        "catalog_status": "simulated",
+        "bbox": None,
+        "search_meta": None,
+        "scene": {
+            "acquired": (now - timedelta(days=days_ago)).isoformat() + "Z",
+            "satellite": "Sentinel-2A",
+            "resolution_m": 10,
+            "cloud_cover_pct": cloud_cover,
+            "status": "delivered",
+            "catalog_id": None,
+            "note": "Simulated satellite imagery.",
+        },
+    }
+
+
 @router.post("/verification-requests", response_model=VerificationRequestSchema)
 def create_verification_request(
     req: VerificationRequestCreate,
     db: Session = Depends(get_db),
 ):
     """Create a verification request. Uses real Sentinel-2 data when CDSE is configured."""
-    asset_registry = {
-        "camera": {"asset_id": "DCAM-NODE-3", "name": "Dockside Camera Node 3", "eta_min": 4},
-        "patrol_boat": {"asset_id": "PB-07", "name": "Harbor Patrol 07", "eta_min": 12},
-        "drone": {"asset_id": "UAV-12", "name": "Surveillance Drone 12", "eta_min": 8},
-        "satellite": {"asset_id": "SENTINEL-2A", "name": "Sentinel-2A (ESA)", "eta_min": 47},
-    }
-    asset = asset_registry.get(req.asset_type, asset_registry["camera"])
-
-    is_satellite = (req.asset_type == "satellite")
+    asset = {"asset_id": "SENTINEL-2A", "name": "Sentinel-2A (ESA)", "eta_min": 47}
     now = datetime.utcnow()
 
-    last_pass_notes = None
-    last_pass_confidence = None
-    last_pass_media = None
-
-    if is_satellite:
-        from app.data_sources.sentinel_adapter import is_configured
-
-        # Get vessel position for bbox
-        vessel = db.query(VesselORM).filter(VesselORM.id == req.vessel_id).first()
-        lat, lng = 33.73, -118.26  # fallback
-        if vessel:
-            latest_pos = (
-                db.query(PositionReportORM)
-                .filter(PositionReportORM.vessel_id == vessel.id)
-                .order_by(PositionReportORM.timestamp.desc())
-                .first()
-            )
-            if latest_pos:
-                lat, lng = latest_pos.latitude, latest_pos.longitude
-
-        if is_configured():
-            hit, bbox, search_meta = _search_satellite_catalog(lat, lng)
-
-            if hit:
-                last_pass_notes = json.dumps({
-                    "last_pass": {
-                        "acquired": hit["datetime"],
-                        "satellite": hit["satellite"],
-                        "resolution_m": 10,
-                        "cloud_cover_pct": round(hit["cloud_cover"], 1) if hit["cloud_cover"] is not None else None,
-                        "bands": "True Color (B4/B3/B2)",
-                        "status": "delivered",
-                        "catalog_id": hit["id"],
-                    },
-                    "next_pass": {
-                        "eta_minutes": asset["eta_min"],
-                        "satellite": "Sentinel-2B",
-                        "expected_resolution_m": 10,
-                        "status": "tasking_accepted",
-                    },
-                    "source": "copernicus",
-                    "search": search_meta,
-                    "vessel_lat": lat,
-                    "vessel_lng": lng,
-                })
-                cloud = hit["cloud_cover"] or 10
-                last_pass_confidence = round(0.7 - (cloud / 100) * 0.3, 2)
-                last_pass_media = f"/api/satellite/verification-image/PLACEHOLDER?bbox={bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
-            else:
-                # No catalog hit yet. Stay on the real Copernicus path and let the
-                # Process API render the latest available mosaic for the area.
-                date_to = now.strftime("%Y-%m-%d")
-                date_from = (now - timedelta(days=30)).strftime("%Y-%m-%d")
-                last_pass_notes = json.dumps({
-                    "last_pass": {
-                        "acquired": None,
-                        "satellite": "Sentinel-2",
-                        "resolution_m": 10,
-                        "bands": "True Color (B4/B3/B2)",
-                        "status": "catalog_empty",
-                        "note": "No recent catalog hit for the vessel area. Rendering the latest available Copernicus mosaic.",
-                    },
-                    "next_pass": {
-                        "eta_minutes": asset["eta_min"],
-                        "satellite": "Sentinel-2B",
-                        "expected_resolution_m": 10,
-                        "status": "tasking_accepted",
-                    },
-                    "source": "copernicus",
-                    "catalog_status": "empty",
-                    "search": search_meta,
-                    "vessel_lat": lat,
-                    "vessel_lng": lng,
-                })
-                last_pass_confidence = 0.45
-                last_pass_media = (
-                    f"/api/satellite/verification-image/PLACEHOLDER"
-                    f"?bbox={bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
-                    f"&date_from={date_from}&date_to={date_to}"
-                )
-        else:
-            # No CDSE configured — simulated
-            last_pass_notes = _simulated_satellite_notes(now, asset, lat, lng)
-            last_pass_confidence, last_pass_media = _simulated_satellite_media(now)
-
     vr_id = str(uuid.uuid4())
-
-    # Fix up the media ref with the real verification ID
-    if last_pass_media and "PLACEHOLDER" in last_pass_media:
-        last_pass_media = last_pass_media.replace("PLACEHOLDER", vr_id)
 
     verification = VerificationRequestORM(
         id=vr_id,
         alert_id=req.alert_id,
         vessel_id=req.vessel_id,
-        status="in_progress" if is_satellite else "assigned",
-        asset_type=req.asset_type or "camera",
+        status="completed",
+        asset_type="satellite",
         asset_id=asset["asset_id"],
         created_at=now,
         updated_at=now,
-        result_confidence=last_pass_confidence,
-        result_notes=last_pass_notes,
-        result_media_ref=last_pass_media,
     )
+
+    lat, lng = _resolve_satellite_request_coordinates(req, db)
+    scene_ref = _build_satellite_scene_reference(now, lat, lng)
+    result_media_ref = scene_ref["result_media_ref"]
+    if result_media_ref and "PLACEHOLDER" in result_media_ref:
+        result_media_ref = result_media_ref.replace("PLACEHOLDER", vr_id)
+
+    verification.result_confidence = scene_ref["result_confidence"]
+    verification.result_media_ref = result_media_ref
+    verification.result_notes = None
+    _set_satellite_metadata(
+        verification,
+        source=scene_ref["satellite_source"],
+        catalog_status=scene_ref["catalog_status"],
+        request_lat=lat,
+        request_lng=lng,
+        bbox=scene_ref["bbox"],
+        search_meta=scene_ref["search_meta"],
+        scene=scene_ref["scene"],
+    )
+
     db.add(verification)
     db.commit()
     db.refresh(verification)
 
-    return VerificationRequestSchema(
-        id=verification.id,
-        alert_id=verification.alert_id,
-        vessel_id=verification.vessel_id,
-        status=verification.status,
-        asset_type=verification.asset_type,
-        asset_id=verification.asset_id,
-        created_at=verification.created_at,
-        updated_at=verification.updated_at,
-        result_confidence=verification.result_confidence,
-        result_notes=verification.result_notes,
-        result_media_ref=verification.result_media_ref,
-    )
-
-
-def _simulated_satellite_notes(now: datetime, asset: dict, lat: float, lng: float) -> str:
-    """Generate simulated satellite notes when CDSE is not configured."""
-    import random
-    days_ago = random.randint(1, 4)
-    cloud_cover = random.randint(5, 35)
-    return json.dumps({
-        "last_pass": {
-            "acquired": (now - __import__("datetime").timedelta(days=days_ago)).isoformat() + "Z",
-            "satellite": "Sentinel-2A",
-            "resolution_m": 10,
-            "cloud_cover_pct": cloud_cover,
-            "bands": "True Color (B4/B3/B2)",
-            "status": "delivered",
-        },
-        "next_pass": {
-            "eta_minutes": asset["eta_min"],
-            "satellite": "Sentinel-2B",
-            "expected_resolution_m": 10,
-            "status": "tasking_accepted",
-        },
-        "source": "simulated",
-        "vessel_lat": lat,
-        "vessel_lng": lng,
-    })
-
-
-def _simulated_satellite_media(now: datetime) -> tuple[float, str]:
-    """Generate simulated confidence and media ref."""
-    import random
-    days_ago = random.randint(1, 4)
-    cloud_cover = random.randint(5, 35)
-    confidence = round(0.7 - (cloud_cover / 100) * 0.3, 2)
-    media = f"s2_tile_{now.strftime('%Y%m%d')}_{days_ago}d_ago.tif"
-    return confidence, media
+    return _serialize_verification_request(verification)
 
 
 @router.get("/verification-requests/{request_id}", response_model=VerificationRequestSchema)
 def get_verification_request(request_id: str, db: Session = Depends(get_db)):
-    """Get verification request status.
-
-    For satellite requests, simulates the next pass completing after ~20 seconds
-    (compressed from ~47 minutes for demo purposes).
-    """
+    """Get verification request status."""
     vr = db.query(VerificationRequestORM).filter(VerificationRequestORM.id == request_id).first()
     if not vr:
         raise HTTPException(status_code=404, detail="Verification request not found")
 
-    # Satellite pass completion (20s delay for demo pacing)
-    if vr.asset_type == "satellite" and vr.status == "in_progress":
-        elapsed = (datetime.utcnow() - vr.created_at).total_seconds()
-        if elapsed > 20:
-            from app.data_sources.sentinel_adapter import is_configured
-
-            existing = json.loads(vr.result_notes) if vr.result_notes else {}
-            is_real = existing.get("source") == "copernicus"
-
-            if is_real and is_configured():
-                lat = existing.get("vessel_lat", 33.73)
-                lng = existing.get("vessel_lng", -118.26)
-                hit, bbox, search_meta = _search_satellite_catalog(
-                    lat,
-                    lng,
-                    windows=[
-                        (0.05, 10, 30.0),
-                        (0.08, 21, 50.0),
-                        (0.12, 45, 80.0),
-                    ],
-                )
-
-                if hit:
-                    existing["next_pass"] = {
-                        "acquired": hit["datetime"],
-                        "satellite": hit["satellite"],
-                        "resolution_m": 10,
-                        "cloud_cover_pct": round(hit["cloud_cover"], 1) if hit["cloud_cover"] is not None else None,
-                        "bands": "True Color (B4/B3/B2)",
-                        "status": "delivered",
-                        "catalog_id": hit["id"],
-                    }
-                    existing["search"] = search_meta
-                    cloud = hit["cloud_cover"] or 5
-                    vr.result_confidence = round(0.85 - (cloud / 100) * 0.2, 2)
-                    bbox_str = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
-                    vr.result_media_ref = f"/api/satellite/verification-image/{vr.id}?bbox={bbox_str}"
-                else:
-                    # Catalog empty — keep the request on the real Copernicus path
-                    # and ask the Process API for the latest available mosaic.
-                    date_to = datetime.utcnow().strftime("%Y-%m-%d")
-                    date_from = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
-                    bbox_str = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
-                    existing["next_pass"] = {
-                        "acquired": datetime.utcnow().isoformat() + "Z",
-                        "satellite": "Sentinel-2",
-                        "resolution_m": 10,
-                        "status": "delivered",
-                        "note": "No catalog item found for this window. Rendering the latest available Copernicus mosaic.",
-                    }
-                    existing["source"] = "copernicus"
-                    existing["catalog_status"] = "empty"
-                    existing["search"] = search_meta
-                    vr.result_confidence = 0.55
-                    vr.result_media_ref = (
-                        f"/api/satellite/verification-image/{vr.id}"
-                        f"?bbox={bbox_str}&date_from={date_from}&date_to={date_to}"
-                    )
-            else:
-                # Simulated completion
-                import random
-                cloud_cover = random.randint(2, 15)
-                existing["next_pass"] = {
-                    "acquired": datetime.utcnow().isoformat() + "Z",
-                    "satellite": "Sentinel-2B",
-                    "resolution_m": 10,
-                    "cloud_cover_pct": cloud_cover,
-                    "bands": "True Color (B4/B3/B2)",
-                    "status": "delivered",
-                }
-                vr.result_confidence = round(0.85 - (cloud_cover / 100) * 0.2, 2)
-                vr.result_media_ref = f"s2_tile_{datetime.utcnow().strftime('%Y%m%d')}_fresh.tif"
-
-            vr.status = "completed"
-            vr.result_notes = json.dumps(existing)
-            vr.updated_at = datetime.utcnow()
-            db.commit()
-
-    return VerificationRequestSchema(
-        id=vr.id,
-        alert_id=vr.alert_id,
-        vessel_id=vr.vessel_id,
-        status=vr.status,
-        asset_type=vr.asset_type,
-        asset_id=vr.asset_id,
-        created_at=vr.created_at,
-        updated_at=vr.updated_at,
-        result_confidence=vr.result_confidence,
-        result_notes=vr.result_notes,
-        result_media_ref=vr.result_media_ref,
-    )
+    return _serialize_verification_request(vr)
 
 
 # ── Scenario / Demo ───────────────────────────────────

@@ -5,40 +5,16 @@ import type { VesselDetail as VesselDetailType, VerificationRequest, RiskHistory
 import { api } from "@/app/lib/api";
 import { riskTextClass, riskLevel, RISK_THRESHOLDS } from "@/app/lib/risk";
 
-import type { SatelliteFootprint } from "./MapView";
+import type { SatelliteOverlay } from "./MapView";
 
 interface VesselDetailProps {
   vessel: VesselDetailType;
   alertId: string | null;
   onClose: () => void;
-  onSatelliteFootprint?: (footprint: SatelliteFootprint | null) => void;
+  onSatelliteOverlay?: (overlay: SatelliteOverlay | null) => void;
   onAlertAction?: (alertId: string, newStatus: string) => void;
   closing?: boolean;
-}
-
-function parseSatelliteMediaRef(resultMediaRef: string | null): {
-  imageSrc?: string;
-  bbox?: [number, number, number, number];
-} {
-  if (!resultMediaRef) return {};
-
-  try {
-    const url = new URL(resultMediaRef, "http://localhost");
-    const bboxParam = url.searchParams.get("bbox");
-    if (!bboxParam) return { imageSrc: resultMediaRef };
-
-    const parts = bboxParam.split(",").map((value) => Number.parseFloat(value));
-    if (parts.length !== 4 || parts.some((value) => Number.isNaN(value))) {
-      return { imageSrc: resultMediaRef };
-    }
-
-    return {
-      imageSrc: resultMediaRef,
-      bbox: [parts[0], parts[1], parts[2], parts[3]],
-    };
-  } catch {
-    return { imageSrc: resultMediaRef };
-  }
+  verificationFocus?: { latitude: number; longitude: number } | null;
 }
 
 function actionStyle(action: string) {
@@ -202,7 +178,24 @@ function formatReportHTML(report: Record<string, unknown>): string {
   if (verifications?.length) {
     html += `<h2>Verification Requests</h2>`;
     for (const vr of verifications) {
-      html += `<div style="margin-bottom:4px"><strong>${vr.asset_type}</strong> (${vr.asset_id}) &mdash; Status: ${vr.status}</div>`;
+      const satellite = vr.satellite as Record<string, unknown> | undefined;
+      const scene = satellite?.scene as Record<string, unknown> | undefined;
+      const bbox = satellite?.bbox as Record<string, unknown> | undefined;
+
+      html += `<div style="margin-bottom:8px"><strong>${vr.asset_type}</strong> (${vr.asset_id}) &mdash; Status: ${vr.status}`;
+      if (scene?.satellite) {
+        html += ` &middot; Scene: ${scene.satellite}`;
+      }
+      if (scene?.acquired_at) {
+        html += ` &middot; Acquired: ${scene.acquired_at}`;
+      }
+      if (scene?.status) {
+        html += ` &middot; Scene Status: ${scene.status}`;
+      }
+      if (bbox?.west != null && bbox?.south != null && bbox?.east != null && bbox?.north != null) {
+        html += ` &middot; BBox: ${bbox.west}, ${bbox.south}, ${bbox.east}, ${bbox.north}`;
+      }
+      html += `</div>`;
     }
   }
 
@@ -278,7 +271,15 @@ function RiskSparkline({ data }: { data: RiskHistoryPoint[] }) {
   );
 }
 
-export default function VesselDetailPanel({ vessel, alertId, onClose, onSatelliteFootprint, onAlertAction, closing }: VesselDetailProps) {
+export default function VesselDetailPanel({
+  vessel,
+  alertId,
+  onClose,
+  onSatelliteOverlay,
+  onAlertAction,
+  closing,
+  verificationFocus,
+}: VesselDetailProps) {
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -369,13 +370,11 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
     }
   }, [alertId]);
 
-  const [verifyAsset, setVerifyAsset] = useState<string>("camera");
-
   const handleVerify = async () => {
     if (!alertId) return;
     setVerifyLoading(true);
     try {
-      const vr = await api.createVerificationRequest(alertId, vessel.id, verifyAsset);
+      const vr = await api.createVerificationRequest(alertId, vessel.id, verificationFocus);
       setVerification(vr);
     } catch (e) {
       console.error("Verification request failed:", e);
@@ -615,37 +614,19 @@ export default function VesselDetailPanel({ vessel, alertId, onClose, onSatellit
             <SatelliteVerificationResult
               verification={verification}
               vesselPosition={vessel.latest_position}
-              vesselName={vessel.name}
-              onFootprint={onSatelliteFootprint}
+              onOverlay={onSatelliteOverlay}
             />
           ) : (
             <div className="space-y-2.5">
-              <div className="grid grid-cols-4 gap-1.5">
-                {[
-                  { key: "camera", label: "Camera" },
-                  { key: "drone", label: "Drone" },
-                  { key: "patrol_boat", label: "Patrol" },
-                  { key: "satellite", label: "Satellite" },
-                ].map((a) => (
-                  <button
-                    key={a.key}
-                    onClick={() => setVerifyAsset(a.key)}
-                    className={`text-[10px] py-1.5 rounded-md font-medium transition-all ${
-                      verifyAsset === a.key
-                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                        : "bg-[#111827] text-slate-500 border border-[#1a2235] hover:text-slate-300"
-                    }`}
-                  >
-                    {a.label}
-                  </button>
-                ))}
-              </div>
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                Request the latest available satellite imagery for the current vessel position or the current map focus.
+              </p>
               <button
                 onClick={handleVerify}
                 disabled={verifyLoading || !alertId}
                 className="w-full py-2 px-3 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 hover:border-blue-500/40 disabled:bg-[#111827] disabled:border-[#1a2235] disabled:text-slate-600 text-blue-400 text-[11px] font-medium rounded-lg transition-all"
               >
-                {verifyLoading ? "Requesting..." : `Request ${verifyAsset === "satellite" ? "Satellite Pass" : "Verification"}`}
+                {verifyLoading ? "Requesting..." : "Request Satellite Imagery"}
               </button>
             </div>
           )}
@@ -767,54 +748,75 @@ function InfoRow({ label, value, highlight }: { label: string; value: string; hi
 interface SatVrProps {
   verification: VerificationRequest;
   vesselPosition?: { latitude: number; longitude: number } | null;
-  vesselName: string;
-  onFootprint?: (footprint: SatelliteFootprint | null) => void;
+  onOverlay?: (overlay: SatelliteOverlay | null) => void;
 }
 
-function SatelliteVerificationResult({ verification, vesselPosition, vesselName, onFootprint }: SatVrProps) {
-  const [liveVr, setLiveVr] = useState(verification);
-  const lastFootprintKeyRef = useRef<string | null>(null);
+function SatelliteVerificationResult({ verification, vesselPosition, onOverlay }: SatVrProps) {
+  const lastOverlayKeyRef = useRef<string | null>(null);
+  const satellite = verification.satellite;
+  const scene = satellite?.scene;
+  const isSatellite = verification.asset_type === "satellite";
+  const isComplete = verification.status === "completed";
+  const isReal = satellite?.source === "copernicus";
+  const bboxWest = satellite?.bbox?.west ?? null;
+  const bboxSouth = satellite?.bbox?.south ?? null;
+  const bboxEast = satellite?.bbox?.east ?? null;
+  const bboxNorth = satellite?.bbox?.north ?? null;
 
-  // Poll for satellite next-pass completion
   useEffect(() => {
-    if (liveVr.asset_type !== "satellite" || liveVr.status === "completed") return;
-    const interval = setInterval(async () => {
-      try {
-        const updated = await api.getVerificationRequest(liveVr.id);
-        setLiveVr(updated);
-        if (updated.status === "completed") clearInterval(interval);
-      } catch {}
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [liveVr.id, liveVr.status, liveVr.asset_type]);
+    const overlayKey = `${verification.id}:${verification.updated_at}:${verification.result_media_ref ?? ""}`;
+    const bbox = (
+      bboxWest != null &&
+      bboxSouth != null &&
+      bboxEast != null &&
+      bboxNorth != null
+    )
+      ? [bboxWest, bboxSouth, bboxEast, bboxNorth] as [number, number, number, number]
+      : null;
 
-  // Emit satellite footprint on map when pass completes
-  useEffect(() => {
-    const footprintKey = `${liveVr.id}:${liveVr.updated_at}:${liveVr.result_media_ref ?? ""}`;
-
-    if (liveVr.status === "completed" && vesselPosition && onFootprint && lastFootprintKeyRef.current !== footprintKey) {
-      const satData = liveVr.result_notes ? (() => { try { return JSON.parse(liveVr.result_notes); } catch { return null; } })() : null;
-      const media = satData?.source === "copernicus" ? parseSatelliteMediaRef(liveVr.result_media_ref) : {};
-      onFootprint({
-        center: [vesselPosition.longitude, vesselPosition.latitude],
-        satellite: satData?.next_pass?.satellite || "Unknown",
-        timestamp: satData?.next_pass?.acquired || new Date().toISOString(),
-        vesselName,
-        imageSrc: media.imageSrc,
-        bbox: media.bbox,
-        renderToken: liveVr.updated_at,
+    if (
+      isSatellite &&
+      isComplete &&
+      isReal &&
+      bbox &&
+      verification.result_media_ref &&
+      onOverlay &&
+      lastOverlayKeyRef.current !== overlayKey
+    ) {
+      onOverlay({
+        imageSrc: verification.result_media_ref,
+        bbox,
+        renderToken: verification.updated_at,
       });
-      lastFootprintKeyRef.current = footprintKey;
+      lastOverlayKeyRef.current = overlayKey;
+      return;
     }
-  }, [liveVr.id, liveVr.status, liveVr.updated_at, liveVr.result_media_ref, vesselPosition, vesselName, onFootprint, liveVr.result_notes]);
 
-  // Parse satellite-specific notes
-  const satData = liveVr.result_notes ? (() => {
-    try { return JSON.parse(liveVr.result_notes); } catch { return null; }
-  })() : null;
+    if (onOverlay && lastOverlayKeyRef.current !== null) {
+      onOverlay(null);
+      lastOverlayKeyRef.current = null;
+    }
+  }, [
+    verification.id,
+    verification.updated_at,
+    verification.result_media_ref,
+    isSatellite,
+    isComplete,
+    isReal,
+    bboxWest,
+    bboxSouth,
+    bboxEast,
+    bboxNorth,
+    onOverlay,
+  ]);
 
-  const isSatellite = liveVr.asset_type === "satellite";
-  const isComplete = liveVr.status === "completed";
+  useEffect(() => {
+    return () => {
+      if (onOverlay && lastOverlayKeyRef.current !== null) {
+        onOverlay(null);
+      }
+    };
+  }, [onOverlay]);
 
   return (
     <div className="space-y-3">
@@ -826,149 +828,109 @@ function SatelliteVerificationResult({ verification, vesselPosition, vesselName,
             style={!isComplete ? { animation: "subtle-pulse 2s infinite" } : undefined}
           />
           <span className={`text-[11px] font-semibold uppercase tracking-wide ${isComplete ? "text-emerald-400" : "text-blue-400"}`}>
-            {liveVr.status}
+            {verification.status}
           </span>
         </div>
         <p className="text-[11px] text-slate-400">
-          Asset: <span className="font-mono text-slate-300">{liveVr.asset_id}</span> ({liveVr.asset_type})
+          Asset: <span className="font-mono text-slate-300">{verification.asset_id}</span> ({verification.asset_type})
         </p>
         {!isSatellite && (
           <p className="text-[10px] text-slate-500 mt-1.5">Verification task created. Asset dispatched.</p>
         )}
+        {isSatellite && satellite?.source && (
+          <p className="text-[10px] text-slate-500 mt-1.5">
+            Source: <span className="font-mono text-slate-300">{satellite.source}</span>
+          </p>
+        )}
       </div>
 
-      {/* Satellite: Last pass imagery */}
-      {isSatellite && satData?.last_pass && vesselPosition && (
+      {isSatellite && scene && vesselPosition && (
         <div className="bg-[#111827] rounded-lg border border-[#1a2235] overflow-hidden">
           <SatThumbnail
             lat={vesselPosition.latitude}
             lng={vesselPosition.longitude}
-            borderColor="border-slate-500/30"
-            variant="old"
-            imageSrc={satData.source === "copernicus" ? liveVr.result_media_ref ?? undefined : undefined}
-            isReal={satData.source === "copernicus"}
-            renderToken={liveVr.updated_at}
+            borderColor={isReal ? "border-cyan-400/50" : "border-slate-500/30"}
+            imageSrc={isReal ? verification.result_media_ref ?? undefined : undefined}
+            isReal={isReal}
+            renderToken={verification.updated_at}
           />
           <div className="p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider">Last Available Imagery</span>
-              <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">{satData.last_pass.status}</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider">Satellite Imagery</span>
+              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+                isReal
+                  ? "text-emerald-400 bg-emerald-500/10"
+                  : "text-amber-400 bg-amber-500/10"
+              }`}>
+                {isReal ? "real" : "simulated"}
+              </span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-[10px]">
               <div>
                 <span className="text-slate-600">Acquired</span>
                 <span className="text-slate-300 ml-1 font-mono">
-                  {satData.last_pass.acquired ? new Date(satData.last_pass.acquired).toLocaleDateString() : "Pending catalog match"}
+                  {scene.acquired_at ? new Date(scene.acquired_at).toLocaleDateString() : "Latest available mosaic"}
                 </span>
               </div>
               <div>
                 <span className="text-slate-600">Satellite</span>
-                <span className="text-slate-300 ml-1 font-mono">{satData.last_pass.satellite}</span>
+                <span className="text-slate-300 ml-1 font-mono">{scene.satellite || "Unknown"}</span>
               </div>
               <div>
                 <span className="text-slate-600">Resolution</span>
-                <span className="text-slate-300 ml-1 font-mono">{satData.last_pass.resolution_m}m</span>
+                <span className="text-slate-300 ml-1 font-mono">{scene.resolution_m ?? 10}m</span>
               </div>
-              <div>
-                <span className="text-slate-600">Cloud cover</span>
-                <span className={`ml-1 font-mono ${satData.last_pass.cloud_cover_pct > 20 ? "text-yellow-400" : "text-slate-300"}`}>
-                  {satData.last_pass.cloud_cover_pct}%
-                </span>
-              </div>
+              {scene.cloud_cover_pct != null && (
+                <div>
+                  <span className="text-slate-600">Cloud cover</span>
+                  <span className={`ml-1 font-mono ${scene.cloud_cover_pct > 20 ? "text-yellow-400" : "text-slate-300"}`}>
+                    {scene.cloud_cover_pct}%
+                  </span>
+                </div>
+              )}
+              {satellite?.catalog_status && (
+                <div>
+                  <span className="text-slate-600">Catalog</span>
+                  <span className="text-slate-300 ml-1 font-mono">{satellite.catalog_status}</span>
+                </div>
+              )}
+              {scene.status && (
+                <div>
+                  <span className="text-slate-600">Scene</span>
+                  <span className="text-slate-300 ml-1 font-mono">{scene.status}</span>
+                </div>
+              )}
             </div>
-            {liveVr.result_confidence != null && (
+            {verification.result_confidence != null && (
               <div className="mt-2 pt-2 border-t border-[#1a2235]">
                 <span className="text-[10px] text-slate-600">Confidence</span>
-                <span className="text-[10px] text-slate-300 font-mono ml-1">{(liveVr.result_confidence * 100).toFixed(0)}%</span>
+                <span className="text-[10px] text-slate-300 font-mono ml-1">{(verification.result_confidence * 100).toFixed(0)}%</span>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Satellite: Next pass status */}
-      {isSatellite && satData?.next_pass && (
-        <div className={`rounded-lg p-4 border ${
-          isComplete
-            ? "bg-emerald-500/5 border-emerald-500/20"
-            : "bg-[#111827] border-amber-500/20"
-        }`}>
-          <div className="flex items-center gap-2 mb-2.5">
-            <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider">
-              {isComplete ? "New Imagery Acquired" : "Next Pass — Pending"}
-            </span>
-            {!isComplete && (
-              <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
-                ETA ~{satData.next_pass.eta_minutes || 47} min
-              </span>
-            )}
-            {isComplete && (
-              <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">delivered</span>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-[10px]">
-            {isComplete && satData.next_pass.acquired && (
+            {satellite?.request_lat != null && satellite?.request_lng != null && (
               <div>
-                <span className="text-slate-600">Acquired</span>
-                <span className="text-emerald-400 ml-1 font-mono">
-                  {new Date(satData.next_pass.acquired).toLocaleDateString()}
+                <span className="text-[10px] text-slate-600">Focus</span>
+                <span className="text-[10px] text-slate-300 font-mono ml-1">
+                  {satellite.request_lat.toFixed(4)}, {satellite.request_lng.toFixed(4)}
                 </span>
               </div>
             )}
-            <div>
-              <span className="text-slate-600">Satellite</span>
-              <span className="text-slate-300 ml-1 font-mono">{satData.next_pass.satellite}</span>
-            </div>
-            <div>
-              <span className="text-slate-600">Resolution</span>
-              <span className="text-slate-300 ml-1 font-mono">{satData.next_pass.expected_resolution_m || satData.next_pass.resolution_m || 10}m</span>
-            </div>
-            {isComplete && satData.next_pass.cloud_cover_pct != null && (
-              <div>
-                <span className="text-slate-600">Cloud cover</span>
-                <span className="text-emerald-400 ml-1 font-mono">{satData.next_pass.cloud_cover_pct}%</span>
-              </div>
+            {scene.note && (
+              <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">{scene.note}</p>
             )}
-          </div>
-          {!isComplete && (
-            <p className="text-[10px] text-amber-400/60 mt-2 italic">Tasking accepted. Awaiting satellite pass...</p>
-          )}
-        </div>
-      )}
-
-      {/* Imagery preview card — shown when pass completes */}
-      {isSatellite && isComplete && vesselPosition && (
-        <div className="bg-[#111827] rounded-lg border border-cyan-500/20 overflow-hidden">
-          <SatThumbnail
-            lat={vesselPosition.latitude}
-            lng={vesselPosition.longitude}
-            borderColor="border-cyan-400/50"
-            imageSrc={satData?.source === "copernicus" ? liveVr.result_media_ref ?? undefined : undefined}
-            isReal={satData?.source === "copernicus"}
-            renderToken={liveVr.updated_at}
-          />
-          <div className="p-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[9px] text-cyan-400 font-semibold uppercase tracking-wider">Satellite Imagery</span>
-              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
-                satData?.source === "copernicus"
-                  ? "text-emerald-400 bg-emerald-500/10"
-                  : "text-amber-400 bg-amber-500/10"
-              }`}>
-                {satData?.source === "copernicus" ? "real" : "simulated"}
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-400">
-              {satData?.next_pass?.satellite || "Unknown"} capture of vessel area. Footprint highlighted on map.
-            </p>
-            {satData?.next_pass?.catalog_id && (
+            {scene.catalog_id && (
               <p className="text-[9px] text-slate-600 mt-1 font-mono">
-                ref: {satData.next_pass.catalog_id}
+                ref: {scene.catalog_id}
               </p>
             )}
-            {!satData?.next_pass?.catalog_id && liveVr.result_media_ref && (
+            {!scene.catalog_id && verification.result_media_ref && (
               <p className="text-[9px] text-slate-600 mt-1 font-mono">
-                ref: {liveVr.result_media_ref}
+                ref: {verification.result_media_ref}
+              </p>
+            )}
+            {isReal && satellite?.bbox && (
+              <p className="text-[10px] text-cyan-300/80 mt-2">
+                Real imagery overlay applied to the map using the returned scene bbox.
               </p>
             )}
           </div>

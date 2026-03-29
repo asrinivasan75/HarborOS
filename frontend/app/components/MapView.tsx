@@ -7,13 +7,9 @@ import { api } from "@/app/lib/api";
 import type { Vessel, Geofence } from "@/app/lib/api";
 import { riskHex, RISK_THRESHOLDS } from "@/app/lib/risk";
 
-export interface SatelliteFootprint {
-  center: [number, number]; // [lng, lat]
-  satellite: string;
-  timestamp: string;
-  vesselName: string;
-  imageSrc?: string;
-  bbox?: [number, number, number, number];
+export interface SatelliteOverlay {
+  imageSrc: string;
+  bbox: [number, number, number, number];
   renderToken?: string;
 }
 
@@ -23,7 +19,9 @@ interface MapViewProps {
   selectedVesselId: string | null;
   onSelectVessel: (vesselId: string) => void;
   flyTo?: { center: [number, number]; zoom: number } | null;
-  satelliteFootprint?: SatelliteFootprint | null;
+  satelliteOverlay?: SatelliteOverlay | null;
+  onMapCenterChange?: (center: [number, number]) => void;
+  onMapClick?: (coords: [number, number]) => void;
 }
 
 const vesselColor = riskHex;
@@ -208,13 +206,29 @@ function buildMapStyle(baseMap: BaseMap): maplibregl.StyleSpecification {
   };
 }
 
-export default function MapView({ vessels, geofences, selectedVesselId, onSelectVessel, flyTo, satelliteFootprint }: MapViewProps) {
+export default function MapView({
+  vessels,
+  geofences,
+  selectedVesselId,
+  onSelectVessel,
+  flyTo,
+  satelliteOverlay,
+  onMapCenterChange,
+  onMapClick,
+}: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Record<string, { marker: maplibregl.Marker; el: HTMLDivElement }>>({});
   const [baseMap, setBaseMap] = useState<BaseMap>("satellite");
   const [heatmap, setHeatmap] = useState(false);
   const [hideNormal, setHideNormal] = useState(false);
+  const centerChangeRef = useRef(onMapCenterChange);
+  const mapClickRef = useRef(onMapClick);
+
+  useEffect(() => {
+    centerChangeRef.current = onMapCenterChange;
+    mapClickRef.current = onMapClick;
+  }, [onMapCenterChange, onMapClick]);
 
   const updateMarkers = useCallback(() => {
     const map = mapRef.current;
@@ -317,6 +331,17 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
     map.on("load", () => {
       mapRef.current = map;
       map.addControl(new maplibregl.NavigationControl(), "top-right");
+      const center = map.getCenter();
+      centerChangeRef.current?.([center.lng, center.lat]);
+
+      map.on("moveend", () => {
+        const nextCenter = map.getCenter();
+        centerChangeRef.current?.([nextCenter.lng, nextCenter.lat]);
+      });
+
+      map.on("click", (event) => {
+        mapClickRef.current?.([event.lngLat.lng, event.lngLat.lat]);
+      });
 
       geofences.forEach((gf) => {
         const color = geofenceColor(gf.zone_type);
@@ -574,106 +599,41 @@ export default function MapView({ vessels, geofences, selectedVesselId, onSelect
     };
   }, [selectedVesselId, vessels]);
 
-  // Satellite imagery footprint overlay
+  // Satellite imagery overlay
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Clean up previous footprint
     if (map.getLayer("sat-imagery")) map.removeLayer("sat-imagery");
-    if (map.getLayer("sat-footprint-fill")) map.removeLayer("sat-footprint-fill");
-    if (map.getLayer("sat-footprint-line")) map.removeLayer("sat-footprint-line");
-    if (map.getLayer("sat-footprint-label")) map.removeLayer("sat-footprint-label");
     if (map.getSource("sat-imagery")) map.removeSource("sat-imagery");
-    if (map.getSource("sat-footprint")) map.removeSource("sat-footprint");
 
-    if (!satelliteFootprint) return;
+    if (!satelliteOverlay) return;
 
-    const [lng, lat] = satelliteFootprint.center;
-    // Sentinel-2 swath is ~290km wide. Show a ~15km footprint for demo scale.
-    const offset = 0.07; // ~7km in each direction at mid-latitudes
-    const polygon = [
-      [lng - offset, lat - offset * 0.7],
-      [lng + offset, lat - offset * 0.7],
-      [lng + offset, lat + offset * 0.7],
-      [lng - offset, lat + offset * 0.7],
-      [lng - offset, lat - offset * 0.7],
-    ];
+    const [west, south, east, north] = satelliteOverlay.bbox;
+    const overlayUrl = resolveSatelliteOverlayUrl(satelliteOverlay.imageSrc, satelliteOverlay.renderToken);
+    if (!overlayUrl) return;
 
-    if (satelliteFootprint.imageSrc && satelliteFootprint.bbox) {
-      const [west, south, east, north] = satelliteFootprint.bbox;
-      const overlayUrl = resolveSatelliteOverlayUrl(satelliteFootprint.imageSrc, satelliteFootprint.renderToken);
-      if (overlayUrl) {
-        map.addSource("sat-imagery", {
-          type: "image",
-          url: overlayUrl,
-          coordinates: [
-            [west, north],
-            [east, north],
-            [east, south],
-            [west, south],
-          ],
-        });
-
-        map.addLayer({
-          id: "sat-imagery",
-          type: "raster",
-          source: "sat-imagery",
-          paint: {
-            "raster-opacity": 0.9,
-            "raster-fade-duration": 0,
-          },
-        });
-      }
-    }
-
-    map.addSource("sat-footprint", {
-      type: "geojson",
-      data: {
-        type: "Feature",
-        properties: {
-          label: `${satelliteFootprint.satellite} — ${new Date(satelliteFootprint.timestamp).toLocaleTimeString()}`,
-        },
-        geometry: { type: "Polygon", coordinates: [polygon] },
-      },
+    map.addSource("sat-imagery", {
+      type: "image",
+      url: overlayUrl,
+      coordinates: [
+        [west, north],
+        [east, north],
+        [east, south],
+        [west, south],
+      ],
     });
 
     map.addLayer({
-      id: "sat-footprint-fill",
-      type: "fill",
-      source: "sat-footprint",
+      id: "sat-imagery",
+      type: "raster",
+      source: "sat-imagery",
       paint: {
-        "fill-color": "#06b6d4",
-        "fill-opacity": 0.12,
+        "raster-opacity": 0.9,
+        "raster-fade-duration": 0,
       },
     });
-
-    map.addLayer({
-      id: "sat-footprint-line",
-      type: "line",
-      source: "sat-footprint",
-      paint: {
-        "line-color": "#06b6d4",
-        "line-width": 2,
-        "line-dasharray": [6, 3],
-        "line-opacity": 0.7,
-      },
-    });
-
-    // Pulse the footprint opacity for 10 seconds to draw attention
-    let pulseFrame = 0;
-    const pulseInterval = setInterval(() => {
-      pulseFrame++;
-      const opacity = 0.08 + Math.sin(pulseFrame * 0.3) * 0.06;
-      try { map.setPaintProperty("sat-footprint-fill", "fill-opacity", opacity); } catch {}
-      if (pulseFrame > 60) { // ~10 seconds
-        clearInterval(pulseInterval);
-        try { map.setPaintProperty("sat-footprint-fill", "fill-opacity", 0.1); } catch {}
-      }
-    }, 160);
-
-    return () => clearInterval(pulseInterval);
-  }, [satelliteFootprint, baseMap]);
+  }, [satelliteOverlay, baseMap]);
 
   return (
     <div className="absolute inset-0">

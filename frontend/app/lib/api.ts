@@ -105,6 +105,40 @@ export interface VerificationRequest {
   result_confidence: number | null;
   result_notes: string | null;
   result_media_ref: string | null;
+  satellite: SatelliteVerification | null;
+}
+
+export interface SatelliteBBox {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}
+
+export interface SatelliteSearch {
+  spread_deg: number | null;
+  days_back: number | null;
+  max_cloud_cover: number | null;
+}
+
+export interface SatelliteScene {
+  acquired_at: string | null;
+  satellite: string | null;
+  resolution_m: number | null;
+  cloud_cover_pct: number | null;
+  status: string | null;
+  catalog_id: string | null;
+  note: string | null;
+}
+
+export interface SatelliteVerification {
+  source: string | null;
+  catalog_status: string | null;
+  request_lat: number | null;
+  request_lng: number | null;
+  bbox: SatelliteBBox | null;
+  search: SatelliteSearch | null;
+  scene: SatelliteScene | null;
 }
 
 export interface Timeline {
@@ -238,10 +272,20 @@ export const api = {
     fetchAPI(`/alerts/${id}?status=${status}`, { method: "PATCH" }),
   getGeofences: () => fetchAPI<Geofence[]>("/geofences"),
   getTimeline: () => fetchAPI<Timeline>("/scenario/timeline"),
-  createVerificationRequest: (alertId: string, vesselId: string, assetType = "camera") =>
+  createVerificationRequest: (
+    alertId: string,
+    vesselId: string,
+    focus?: { latitude: number; longitude: number } | null,
+  ) =>
     fetchAPI<VerificationRequest>("/verification-requests", {
       method: "POST",
-      body: JSON.stringify({ alert_id: alertId, vessel_id: vesselId, asset_type: assetType }),
+      body: JSON.stringify({
+        alert_id: alertId,
+        vessel_id: vesselId,
+        asset_type: "satellite",
+        focus_lat: focus?.latitude ?? null,
+        focus_lng: focus?.longitude ?? null,
+      }),
     }),
   getVerificationRequest: (id: string) =>
     fetchAPI<VerificationRequest>(`/verification-requests/${id}`),
