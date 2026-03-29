@@ -53,7 +53,7 @@ export default function AnalyticsPage() {
 
         // Archive stats
         try {
-          const arch = await fetch("http://localhost:8000/api/archive/stats").then((r) => r.json());
+          const arch = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/archive/stats`).then((r) => r.json());
           setArchiveStats(arch);
         } catch {}
 
