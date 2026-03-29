@@ -153,17 +153,10 @@ function buildStages(): DemoStage[] {
             — from geofence breaches to loitering patterns to AIS dark periods.
           </p>
           <p>
-            Here&apos;s{" "}
-            <span className="text-red-400 font-semibold">MV DARK HORIZON</span>{" "}
-            — a Marshall Islands-flagged cargo vessel that triggered{" "}
-            <span className="text-red-400 font-semibold">
-              multiple alarms
-            </span>
-            .
-          </p>
-          <p>
-            Each signal has a severity score and a human-readable explanation. The
-            composite risk score uses{" "}
+            Look at the detail panel for{" "}
+            <span className="text-red-400 font-semibold">JADE STAR</span>.
+            Each anomaly signal has a severity score and a human-readable
+            explanation. The composite risk score uses{" "}
             <span className="text-cyan-400">
               fuzzy inference (Mamdani method)
             </span>{" "}
@@ -173,21 +166,17 @@ function buildStages(): DemoStage[] {
       ),
       subtitle: (
         <p className="text-slate-400 text-sm mt-3 font-mono leading-relaxed">
-          Loitering:{" "}
-          <span className="text-orange-300">
-            Circling in a 4.8nm area for 27 min with 331° course change
-          </span>
-          . AIS Gap:{" "}
-          <span className="text-orange-300">12-minute dark period</span>.
-          Geofence Breach:{" "}
+          Kinematic Implausibility:{" "}
           <span className="text-red-300">
-            Inside restricted LNG terminal zone
+            2 impossible position jumps (max 50 nm in &lt;2 min)
           </span>
-          .
+          . Risk Score:{" "}
+          <span className="text-orange-300 font-semibold">72 — VERIFY</span>.
         </p>
       ),
       action: (props) => {
-        props.onSelectVessel(props.darkHorizonId);
+        // Zoom out slightly to show the full track + geofence context
+        props.onFlyTo([-118.26, 33.73], 12);
       },
     },
 
@@ -214,11 +203,8 @@ function buildStages(): DemoStage[] {
         </div>
       ),
       action: (props) => {
-        props.onSelectVessel(props.darkHorizonId);
-        // Open report in new tab after delay
-        setTimeout(() => {
-          window.open(`/report?vesselId=${props.darkHorizonId}`, "_blank");
-        }, 1200);
+        // Open the full incident report for JADE STAR in a new tab
+        window.open(`/report?vesselId=${props.jadeStarId}`, "_blank");
       },
     },
 
@@ -254,7 +240,9 @@ function buildStages(): DemoStage[] {
         </div>
       ),
       action: (props) => {
-        props.onSelectVessel(props.darkHorizonId);
+        // Zoom in tight on the vessel — "satellite scale" view
+        props.onSelectVessel(props.jadeStarId);
+        props.onFlyTo([-118.25, 33.71], 15);
       },
     },
 
