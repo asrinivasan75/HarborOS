@@ -1140,6 +1140,32 @@ def archive_stats():
 
 # ── Satellite Imagery ──────────────────────────────────
 
+def _acquisition_day(datetime_value: str | None) -> str | None:
+    if not datetime_value:
+        return None
+    return datetime_value.split("T", 1)[0]
+
+
+def _serialize_satellite_search_results(
+    *,
+    bbox: list[float],
+    results: list[dict],
+) -> list[dict]:
+    from app.data_sources.sentinel_adapter import build_imagery_url
+
+    serialized: list[dict] = []
+    for result in results:
+        acquisition_day = _acquisition_day(result.get("datetime"))
+        serialized.append({
+            **result,
+            "render_url": build_imagery_url(
+                bbox=bbox,
+                date_from=acquisition_day,
+                date_to=acquisition_day,
+            ) if acquisition_day else build_imagery_url(bbox=bbox),
+        })
+    return serialized
+
 @router.get("/satellite/verification-image/{request_id}")
 def satellite_verification_image(
     request_id: str,
@@ -1190,9 +1216,69 @@ def satellite_verification_image(
 def satellite_info():
     """Get Sentinel-2 satellite constellation info and tile URLs."""
     from app.data_sources.sentinel_adapter import get_sentinel2_tile_url, get_sentinel2_info
+    constellation = get_sentinel2_info()
     return {
+        "configured": constellation["configured"],
         "tiles": get_sentinel2_tile_url(),
-        "constellation": get_sentinel2_info(),
+        "constellation": constellation,
+    }
+
+
+@router.get("/satellite/by-vessel/{vessel_id}")
+def satellite_search_by_vessel(
+    vessel_id: str,
+    spread_deg: float = Query(0.08, gt=0, le=1),
+    days_back: int = Query(60, ge=1, le=365),
+    max_cloud_cover: float = Query(60, ge=0, le=100),
+    limit: int = Query(8, ge=1, le=20),
+    date_from: str | None = Query(None, description="Start date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="End date (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+):
+    """Search recent acquisitions centered on the vessel's latest position."""
+    from app.data_sources.sentinel_adapter import build_search_bbox, is_configured, search_imagery
+
+    if not is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Sentinel-2 not configured. Set CDSE_CLIENT_ID and CDSE_CLIENT_SECRET.",
+        )
+
+    latest_position = (
+        db.query(PositionReportORM)
+        .filter(PositionReportORM.vessel_id == vessel_id)
+        .order_by(PositionReportORM.timestamp.desc())
+        .first()
+    )
+    if not latest_position:
+        raise HTTPException(status_code=404, detail="Vessel latest position not found")
+
+    bbox = build_search_bbox(
+        lat=latest_position.latitude,
+        lng=latest_position.longitude,
+        spread_deg=spread_deg,
+    )
+    results = search_imagery(
+        bbox=bbox,
+        days_back=days_back,
+        max_cloud_cover=max_cloud_cover,
+        limit=limit,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return {
+        "focus": {
+            "latitude": latest_position.latitude,
+            "longitude": latest_position.longitude,
+        },
+        "bbox": {
+            "west": bbox[0],
+            "south": bbox[1],
+            "east": bbox[2],
+            "north": bbox[3],
+        },
+        "results": _serialize_satellite_search_results(bbox=bbox, results=results),
+        "count": len(results),
     }
 
 
@@ -1205,6 +1291,8 @@ def satellite_search(
     days_back: int = Query(60, ge=1, le=365),
     max_cloud_cover: float = Query(60, ge=0, le=100),
     limit: int = Query(5, ge=1, le=20),
+    date_from: str | None = Query(None, description="Start date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="End date (YYYY-MM-DD)"),
 ):
     """Search for recent Sentinel-2 acquisitions over an area.
 
@@ -1222,8 +1310,20 @@ def satellite_search(
         days_back=days_back,
         max_cloud_cover=max_cloud_cover,
         limit=limit,
+        date_from=date_from,
+        date_to=date_to,
     )
-    return {"results": results, "count": len(results)}
+    search_bbox = [west, south, east, north]
+    return {
+        "bbox": {
+            "west": west,
+            "south": south,
+            "east": east,
+            "north": north,
+        },
+        "results": _serialize_satellite_search_results(bbox=search_bbox, results=results),
+        "count": len(results),
+    }
 
 
 @router.get("/satellite/imagery")
@@ -1262,6 +1362,35 @@ def satellite_imagery(
         raise HTTPException(status_code=502, detail="Failed to fetch imagery from Copernicus")
 
     return Response(content=png_bytes, media_type="image/png")
+
+
+@router.get("/satellite/tile/{z}/{x}/{y}")
+def satellite_tile(
+    z: int,
+    x: int,
+    y: int,
+):
+    """Serve a single Sentinel-backed basemap tile, with graceful fallback."""
+    from fastapi.responses import RedirectResponse, Response
+    from app.data_sources.sentinel_adapter import (
+        get_fallback_tile_url,
+        get_sentinel2_tile_png,
+        is_configured,
+    )
+
+    fallback_url = get_fallback_tile_url(z=z, x=x, y=y)
+    if not is_configured():
+        return RedirectResponse(fallback_url, status_code=307)
+
+    png_bytes = get_sentinel2_tile_png(z=z, x=x, y=y)
+    if png_bytes is None:
+        return RedirectResponse(fallback_url, status_code=307)
+
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=900"},
+    )
 
 
 @router.post("/archive/run")
