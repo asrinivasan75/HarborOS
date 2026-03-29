@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
-import type { VesselDetail as VesselDetailType, VerificationRequest, RiskHistoryPoint } from "@/app/lib/api";
+import type {
+  VesselDetail as VesselDetailType,
+  VerificationRequest,
+  RiskHistoryPoint,
+  SatelliteAcquisition,
+  SatelliteInfoResponse,
+} from "@/app/lib/api";
 import { api } from "@/app/lib/api";
 import { riskTextClass, riskLevel, RISK_THRESHOLDS } from "@/app/lib/risk";
 
@@ -53,6 +59,30 @@ const SIGNAL_LABELS: Record<string, string> = {
 
 function signalLabel(type: string): string {
   return SIGNAL_LABELS[type] ?? type.replace(/_/g, " ");
+}
+
+const DEFAULT_BROWSER_SPREAD_DEG = 0.08;
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysAgoIsoDate(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function buildFocusBBox(latitude: number, longitude: number, spreadDeg = DEFAULT_BROWSER_SPREAD_DEG): [number, number, number, number] {
+  return [
+    longitude - spreadDeg,
+    latitude - spreadDeg,
+    longitude + spreadDeg,
+    latitude + spreadDeg,
+  ];
+}
+
+function formatAcquisitionTime(datetimeValue: string | null): string {
+  if (!datetimeValue) return "Unknown acquisition";
+  return new Date(datetimeValue).toLocaleString();
 }
 
 function formatReportHTML(report: Record<string, unknown>): string {
@@ -284,6 +314,16 @@ export default function VesselDetailPanel({
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [riskHistory, setRiskHistory] = useState<RiskHistoryPoint[]>([]);
+  const [satelliteInfo, setSatelliteInfo] = useState<SatelliteInfoResponse | null>(null);
+  const [imageryTarget, setImageryTarget] = useState<"vessel" | "focus">("vessel");
+  const [imageryDateFrom, setImageryDateFrom] = useState(() => daysAgoIsoDate(30));
+  const [imageryDateTo, setImageryDateTo] = useState(() => todayIsoDate());
+  const [imageryCloudCover, setImageryCloudCover] = useState(50);
+  const [imageryResults, setImageryResults] = useState<SatelliteAcquisition[]>([]);
+  const [imageryLoading, setImageryLoading] = useState(false);
+  const [imageryError, setImageryError] = useState<string | null>(null);
+  const [imagerySearchBBox, setImagerySearchBBox] = useState<[number, number, number, number] | null>(null);
+  const [activeAcquisitionKey, setActiveAcquisitionKey] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -292,6 +332,115 @@ export default function VesselDetailPanel({
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [vessel.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getSatelliteInfo().then((info) => {
+      if (!cancelled) {
+        setSatelliteInfo(info);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setSatelliteInfo(null);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!verificationFocus && imageryTarget === "focus") {
+      setImageryTarget("vessel");
+    }
+  }, [verificationFocus, imageryTarget]);
+
+  const runImagerySearch = useCallback(async () => {
+    if (!satelliteInfo?.configured) {
+      setImageryResults([]);
+      setImagerySearchBBox(null);
+      setImageryError("Sentinel imagery search is unavailable until Copernicus credentials are configured.");
+      return;
+    }
+
+    setImageryLoading(true);
+    setImageryError(null);
+    try {
+      if (imageryTarget === "focus" && verificationFocus) {
+        const bbox = buildFocusBBox(
+          verificationFocus.latitude,
+          verificationFocus.longitude,
+        );
+        const response = await api.searchSatelliteImagery({
+          west: bbox[0],
+          south: bbox[1],
+          east: bbox[2],
+          north: bbox[3],
+          dateFrom: imageryDateFrom,
+          dateTo: imageryDateTo,
+          maxCloudCover: imageryCloudCover,
+          limit: 8,
+        });
+        setImageryResults(response.results);
+        setImagerySearchBBox(bbox);
+        return;
+      }
+
+      const response = await api.searchSatelliteImagery({
+        vesselId: vessel.id,
+        spreadDeg: DEFAULT_BROWSER_SPREAD_DEG,
+        dateFrom: imageryDateFrom,
+        dateTo: imageryDateTo,
+        maxCloudCover: imageryCloudCover,
+        limit: 8,
+      });
+      setImageryResults(response.results);
+      setImagerySearchBBox(
+        response.bbox
+          ? [response.bbox.west, response.bbox.south, response.bbox.east, response.bbox.north]
+          : null
+      );
+    } catch (error) {
+      setImageryResults([]);
+      setImagerySearchBBox(null);
+      setImageryError(error instanceof Error ? error.message : "Failed to search satellite imagery.");
+    } finally {
+      setImageryLoading(false);
+    }
+  }, [
+    imageryCloudCover,
+    imageryDateFrom,
+    imageryDateTo,
+    imageryTarget,
+    satelliteInfo?.configured,
+    verificationFocus,
+    vessel.id,
+  ]);
+
+  const handleApplyAcquisition = useCallback((acquisition: SatelliteAcquisition) => {
+    const bbox = imagerySearchBBox ?? acquisition.bbox;
+    if (!bbox || !onSatelliteOverlay) return;
+
+    const acquisitionDate = acquisition.datetime?.split("T", 1)[0];
+    onSatelliteOverlay({
+      imageSrc: acquisition.render_url ?? api.getSatelliteImageryUrl({
+        west: bbox[0],
+        south: bbox[1],
+        east: bbox[2],
+        north: bbox[3],
+        dateFrom: acquisitionDate,
+        dateTo: acquisitionDate,
+      }),
+      bbox,
+      renderToken: acquisition.id ?? acquisition.datetime ?? new Date().toISOString(),
+    });
+    setActiveAcquisitionKey(acquisition.id ?? acquisition.render_url ?? acquisition.datetime ?? null);
+  }, [imagerySearchBBox, onSatelliteOverlay]);
+
+  const handleClearImageryOverlay = useCallback(() => {
+    onSatelliteOverlay?.(null);
+    setActiveAcquisitionKey(null);
+  }, [onSatelliteOverlay]);
 
   const handleExportReport = useCallback(async () => {
     setExportLoading(true);
@@ -630,6 +779,179 @@ export default function VesselDetailPanel({
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {riskScore >= RISK_THRESHOLDS.monitor && (
+        <div className="px-4 py-3 border-t border-[#1a2235]">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Imagery Browser</h3>
+            <span className={`text-[9px] font-semibold uppercase px-2 py-0.5 rounded-md border ${
+              satelliteInfo?.configured
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                : "bg-slate-500/10 text-slate-400 border-slate-500/20"
+            }`}>
+              {satelliteInfo?.configured ? "live" : "fallback"}
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-500 leading-relaxed mb-3">
+            Browse recent satellite acquisitions for the vessel area or the current map focus, then apply the selected scene as a map overlay.
+          </p>
+
+          <div className="space-y-2.5">
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setImageryTarget("vessel")}
+                className={`text-[10px] py-1.5 rounded-md font-medium transition-all ${
+                  imageryTarget === "vessel"
+                    ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                    : "bg-[#111827] text-slate-500 border border-[#1a2235] hover:text-slate-300"
+                }`}
+              >
+                Vessel Area
+              </button>
+              <button
+                type="button"
+                onClick={() => verificationFocus && setImageryTarget("focus")}
+                disabled={!verificationFocus}
+                className={`text-[10px] py-1.5 rounded-md font-medium transition-all ${
+                  imageryTarget === "focus"
+                    ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                    : "bg-[#111827] text-slate-500 border border-[#1a2235] hover:text-slate-300"
+                } disabled:opacity-40 disabled:hover:text-slate-500`}
+              >
+                Map Focus
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-[9px] text-slate-600 uppercase tracking-wider">From</span>
+                <input
+                  type="date"
+                  value={imageryDateFrom}
+                  max={imageryDateTo}
+                  onChange={(event) => setImageryDateFrom(event.target.value)}
+                  className="bg-[#111827] border border-[#1a2235] rounded-md px-2 py-1.5 text-[10px] text-slate-300 focus:outline-none focus:border-slate-600"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[9px] text-slate-600 uppercase tracking-wider">To</span>
+                <input
+                  type="date"
+                  value={imageryDateTo}
+                  min={imageryDateFrom}
+                  max={todayIsoDate()}
+                  onChange={(event) => setImageryDateTo(event.target.value)}
+                  className="bg-[#111827] border border-[#1a2235] rounded-md px-2 py-1.5 text-[10px] text-slate-300 focus:outline-none focus:border-slate-600"
+                />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-[9px] text-slate-600 uppercase tracking-wider">Max Cloud Cover</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={5}
+                value={imageryCloudCover}
+                onChange={(event) => setImageryCloudCover(Math.min(100, Math.max(0, Number(event.target.value) || 0)))}
+                className="bg-[#111827] border border-[#1a2235] rounded-md px-2 py-1.5 text-[10px] text-slate-300 focus:outline-none focus:border-slate-600"
+              />
+            </label>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void runImagerySearch()}
+                disabled={imageryLoading || !satelliteInfo?.configured}
+                className="flex-1 py-2 px-3 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/25 hover:border-blue-500/40 disabled:bg-[#111827] disabled:border-[#1a2235] disabled:text-slate-600 text-blue-400 text-[11px] font-medium rounded-lg transition-all"
+              >
+                {imageryLoading ? "Searching..." : "Search Acquisitions"}
+              </button>
+              <button
+                type="button"
+                onClick={handleClearImageryOverlay}
+                className="py-2 px-3 bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/20 hover:border-slate-500/30 text-slate-400 text-[11px] font-medium rounded-lg transition-all"
+              >
+                Clear Overlay
+              </button>
+            </div>
+
+            {imageryTarget === "focus" && verificationFocus && (
+              <p className="text-[9px] text-slate-600 font-mono">
+                Focus: {verificationFocus.latitude.toFixed(4)}, {verificationFocus.longitude.toFixed(4)}
+              </p>
+            )}
+
+            {!satelliteInfo?.configured && (
+              <div className="rounded-lg border border-slate-500/20 bg-slate-500/10 p-3">
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Sentinel search is unavailable until Copernicus credentials are configured. The basemap will continue using fallback imagery.
+                </p>
+              </div>
+            )}
+
+            {imageryError && (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+                <p className="text-[10px] text-red-300 leading-relaxed">{imageryError}</p>
+              </div>
+            )}
+
+            {satelliteInfo?.configured && !imageryError && (
+              <div className="space-y-2">
+                {imageryResults.length > 0 ? (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {imageryResults.map((acquisition, index) => {
+                      const acquisitionKey = acquisition.id ?? acquisition.render_url ?? acquisition.datetime ?? `acq-${index}`;
+                      const isActiveOverlay = activeAcquisitionKey === acquisitionKey;
+                      return (
+                        <button
+                          key={acquisitionKey}
+                          type="button"
+                          onClick={() => handleApplyAcquisition(acquisition)}
+                          className={`w-full text-left rounded-lg border p-3 transition-all ${
+                            isActiveOverlay
+                              ? "bg-blue-500/12 border-blue-500/30"
+                              : "bg-[#111827] border-[#1a2235] hover:border-slate-600"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[11px] text-slate-200 font-medium truncate">
+                                {formatAcquisitionTime(acquisition.datetime)}
+                              </p>
+                              <p className="text-[9px] text-slate-500 mt-1">
+                                {(acquisition.satellite || "Sentinel-2")} • {acquisition.processing_level || "L2A"}
+                              </p>
+                            </div>
+                            <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+                              acquisition.cloud_cover != null && acquisition.cloud_cover > 20
+                                ? "text-amber-300 bg-amber-500/10"
+                                : "text-emerald-300 bg-emerald-500/10"
+                            }`}>
+                              {acquisition.cloud_cover != null ? `${acquisition.cloud_cover}% cloud` : "cloud n/a"}
+                            </span>
+                          </div>
+                          <p className="text-[9px] text-cyan-300/80 mt-2">
+                            {isActiveOverlay ? "Overlay active" : "Apply overlay"}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : !imageryLoading ? (
+                  <div className="rounded-lg border border-[#1a2235] bg-[#111827] p-3">
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      No acquisitions matched this search window.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

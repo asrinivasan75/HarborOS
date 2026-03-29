@@ -4,7 +4,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { api } from "@/app/lib/api";
-import type { Vessel, Geofence } from "@/app/lib/api";
+import type { Vessel, Geofence, SatelliteTileSource } from "@/app/lib/api";
 import { riskHex, RISK_THRESHOLDS } from "@/app/lib/risk";
 
 export interface SatelliteOverlay {
@@ -44,6 +44,12 @@ function resolveSatelliteOverlayUrl(imageSrc?: string, renderToken?: string): st
   const absoluteUrl = imageSrc.startsWith("/api/") ? `${apiBase}${imageSrc}` : imageSrc;
   if (!renderToken) return absoluteUrl;
   return `${absoluteUrl}${absoluteUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(renderToken)}`;
+}
+
+function resolveSatelliteTileTemplate(tileUrl?: string): string | null {
+  if (!tileUrl) return null;
+  const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api").replace(/\/api$/, "");
+  return tileUrl.startsWith("/api/") ? `${apiBase}${tileUrl}` : tileUrl;
 }
 
 /**
@@ -132,22 +138,64 @@ function vesselSvgPaths(vesselType: string): {
   }
 }
 
-type BaseMap = "dark" | "satellite";
+type MapMode = "maps" | "dark" | "satellite";
 
-function buildMapStyle(baseMap: BaseMap): maplibregl.StyleSpecification {
-  if (baseMap === "satellite") {
+const ESRI_TILE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+
+function buildMapStyle(mapMode: MapMode, satelliteTiles?: SatelliteTileSource | null): maplibregl.StyleSpecification {
+  if (mapMode === "maps") {
     return {
       version: 8,
       glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
       sources: {
         "satellite": {
           type: "raster",
-          tiles: [
-            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-          ],
+          tiles: [ESRI_TILE_URL],
           tileSize: 256,
           maxzoom: 18,
           attribution: "&copy; Esri, Maxar, Earthstar Geographics",
+        },
+        "carto-labels": {
+          type: "raster",
+          tiles: [
+            "https://a.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}@2x.png",
+            "https://b.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}@2x.png",
+          ],
+          tileSize: 256,
+          maxzoom: 18,
+        },
+      },
+      layers: [
+        {
+          id: "satellite",
+          type: "raster",
+          source: "satellite",
+          minzoom: 0,
+          maxzoom: 22,
+        },
+        {
+          id: "labels",
+          type: "raster",
+          source: "carto-labels",
+          minzoom: 3,
+          maxzoom: 22,
+          paint: { "raster-opacity": 0.8 },
+        },
+      ],
+    };
+  }
+  if (mapMode === "satellite") {
+    const tileUrl = resolveSatelliteTileTemplate(satelliteTiles?.tile_url ?? ESRI_TILE_URL);
+    return {
+      version: 8,
+      glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+      sources: {
+        "satellite": {
+          type: "raster",
+          tiles: tileUrl ? [tileUrl] : [ESRI_TILE_URL],
+          tileSize: satelliteTiles?.tile_size ?? 256,
+          maxzoom: satelliteTiles?.max_zoom ?? 18,
+          attribution: satelliteTiles?.attribution ?? "&copy; Esri, Maxar, Earthstar Geographics",
         },
         "carto-labels": {
           type: "raster",
@@ -219,16 +267,37 @@ export default function MapView({
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Record<string, { marker: maplibregl.Marker; el: HTMLDivElement }>>({});
-  const [baseMap, setBaseMap] = useState<BaseMap>("satellite");
-  const [heatmap, setHeatmap] = useState(false);
+  const [mapMode, setMapMode] = useState<MapMode>("maps");
+  const [satelliteTiles, setSatelliteTiles] = useState<SatelliteTileSource | null>(null);
   const [hideNormal, setHideNormal] = useState(false);
   const centerChangeRef = useRef(onMapCenterChange);
   const mapClickRef = useRef(onMapClick);
+  const satelliteStyleKey = satelliteTiles
+    ? `${satelliteTiles.tile_url}:${satelliteTiles.tile_size}:${satelliteTiles.max_zoom}:${satelliteTiles.sentinel2_available}`
+    : "fallback";
 
   useEffect(() => {
     centerChangeRef.current = onMapCenterChange;
     mapClickRef.current = onMapClick;
   }, [onMapCenterChange, onMapClick]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getSatelliteInfo()
+      .then((info) => {
+        if (!cancelled) {
+          setSatelliteTiles(info.tiles);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSatelliteTiles(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const updateMarkers = useCallback(() => {
     const map = mapRef.current;
@@ -317,7 +386,7 @@ export default function MapView({
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: buildMapStyle(baseMap),
+      style: buildMapStyle(mapMode, satelliteTiles),
       center: [-118.265, 33.725],
       zoom: 12.5,
       pitch: 0,
@@ -377,35 +446,6 @@ export default function MapView({
         });
       });
 
-      // Heatmap source & layer
-      map.addSource("vessel-heatmap", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-
-      map.addLayer({
-        id: "vessel-heatmap-layer",
-        type: "heatmap",
-        source: "vessel-heatmap",
-        layout: { visibility: "none" },
-        paint: {
-          "heatmap-weight": ["interpolate", ["linear"], ["get", "risk"], 0, 0.2, 100, 1],
-          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 15, 2],
-          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 20, 15, 40],
-          "heatmap-color": [
-            "interpolate",
-            ["linear"],
-            ["heatmap-density"],
-            0, "rgba(0,0,0,0)",
-            0.2, "rgba(0,0,255,0.4)",
-            0.4, "rgba(0,255,255,0.6)",
-            0.6, "rgba(255,255,0,0.7)",
-            1, "rgba(255,0,0,0.9)",
-          ],
-          "heatmap-opacity": 0.6,
-        },
-      });
-
       updateMarkers();
     });
 
@@ -419,42 +459,13 @@ export default function MapView({
     updateMarkers();
   }, [updateMarkers]);
 
-  // Update heatmap source data and visibility
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    if (!map.getSource("vessel-heatmap")) return;
-
-    if (heatmap) {
-      const features = vessels
-        .filter((v) => v.latest_position)
-        .map((v) => ({
-          type: "Feature" as const,
-          geometry: {
-            type: "Point" as const,
-            coordinates: [v.latest_position!.longitude, v.latest_position!.latitude],
-          },
-          properties: { risk: v.risk_score ?? 0 },
-        }));
-
-      (map.getSource("vessel-heatmap") as maplibregl.GeoJSONSource).setData({
-        type: "FeatureCollection",
-        features,
-      });
-      map.setLayoutProperty("vessel-heatmap-layer", "visibility", "visible");
-    } else {
-      map.setLayoutProperty("vessel-heatmap-layer", "visibility", "none");
-    }
-  }, [vessels, heatmap]);
-
   // Switch base map style
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const center = map.getCenter();
     const zoom = map.getZoom();
-    map.setStyle(buildMapStyle(baseMap));
+    map.setStyle(buildMapStyle(mapMode, satelliteTiles));
     map.once("styledata", () => {
       map.setCenter(center);
       map.setZoom(zoom);
@@ -476,38 +487,9 @@ export default function MapView({
           });
         }
       });
-      // Re-add heatmap source & layer after style change
-      if (!map.getSource("vessel-heatmap")) {
-        map.addSource("vessel-heatmap", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-        });
-        map.addLayer({
-          id: "vessel-heatmap-layer",
-          type: "heatmap",
-          source: "vessel-heatmap",
-          layout: { visibility: heatmap ? "visible" : "none" },
-          paint: {
-            "heatmap-weight": ["interpolate", ["linear"], ["get", "risk"], 0, 0.2, 100, 1],
-            "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 0.5, 15, 2],
-            "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 20, 15, 40],
-            "heatmap-color": [
-              "interpolate",
-              ["linear"],
-              ["heatmap-density"],
-              0, "rgba(0,0,0,0)",
-              0.2, "rgba(0,0,255,0.4)",
-              0.4, "rgba(0,255,255,0.6)",
-              0.6, "rgba(255,255,0,0.7)",
-              1, "rgba(255,0,0,0.9)",
-            ],
-            "heatmap-opacity": 0.6,
-          },
-        });
-      }
       updateMarkers();
     });
-  }, [baseMap]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mapMode, satelliteStyleKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!flyTo || !mapRef.current) return;
@@ -597,7 +579,7 @@ export default function MapView({
     return () => {
       cancelled = true;
     };
-  }, [selectedVesselId, vessels]);
+  }, [selectedVesselId, vessels, mapMode, satelliteStyleKey]);
 
   // Satellite imagery overlay
   useEffect(() => {
@@ -633,7 +615,7 @@ export default function MapView({
         "raster-fade-duration": 0,
       },
     });
-  }, [satelliteOverlay, baseMap]);
+  }, [satelliteOverlay, mapMode, satelliteStyleKey]);
 
   return (
     <div className="absolute inset-0">
@@ -670,19 +652,19 @@ export default function MapView({
       {/* Base map toggle */}
       <div className="absolute bottom-4 right-4 bg-[#0d1320]/95 backdrop-blur-md border border-[#1a2235] rounded-xl overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-white/[0.03] flex">
         <button
-          onClick={() => setBaseMap("satellite")}
+          onClick={() => setMapMode("maps")}
           className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-            baseMap === "satellite"
+            mapMode === "maps"
               ? "bg-blue-500/20 text-blue-400 border-r border-[#1a2235]"
               : "text-slate-500 hover:text-slate-300 border-r border-[#1a2235]"
           }`}
         >
-          Satellite
+          Maps
         </button>
         <button
-          onClick={() => setBaseMap("dark")}
+          onClick={() => setMapMode("dark")}
           className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-            baseMap === "dark"
+            mapMode === "dark"
               ? "bg-blue-500/20 text-blue-400 border-r border-[#1a2235]"
               : "text-slate-500 hover:text-slate-300 border-r border-[#1a2235]"
           }`}
@@ -690,14 +672,14 @@ export default function MapView({
           Dark
         </button>
         <button
-          onClick={() => setHeatmap((prev) => !prev)}
+          onClick={() => setMapMode("satellite")}
           className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-            heatmap
+            mapMode === "satellite"
               ? "bg-blue-500/20 text-blue-400"
               : "text-slate-500 hover:text-slate-300"
           }`}
         >
-          Heatmap
+          Satellite
         </button>
       </div>
       <style jsx global>{`

@@ -36,6 +36,13 @@ export CDSE_CLIENT_SECRET="your_client_secret"
 
 If you prefer `.env`, put those keys in `backend/.env` before running `uvicorn app.main:app --reload --port 8000`.
 
+run this before starting the backend to verify your credentials and see a sample Sentinel-2 tile URL:
+
+cat > .env <<'EOF'
+CDSE_CLIENT_ID=sh-00bcffba-0f93-4c80-afdb-a4472934d1ca
+CDSE_CLIENT_SECRET=NlhMrdnBinFDt4UITKEAdTDQImSu0tmk
+EOF
+
 ## What You'll See
 
 Open `http://localhost:3000` — an operator console showing:
