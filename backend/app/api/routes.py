@@ -1113,8 +1113,8 @@ def get_vessel_profiles():
 # ── Edge Node (SeaPod / Raspberry Pi) ─────────────────
 
 # Demo transformation constants
-_GPS_LAT_OFFSET = -20.0   # Philly -> Atlantic
-_GPS_LON_OFFSET = -40.0
+_GPS_LAT_OFFSET = 0.0     # No offset — show real GPS position (Philly)
+_GPS_LON_OFFSET = 0.0
 _RANGE_SCALE = 6173        # 1.2m pool -> ~4 nautical miles
 
 def _calculate_target_position(lat: float, lon: float, distance_nm: float, heading_deg: float) -> tuple[float, float]:
@@ -1190,7 +1190,7 @@ def receive_edge_node_alert(
             name=node_id,
             vessel_type="sensor_node",
             flag_state="United States",
-            region="atlantic_demo",
+            region="seapod_live",
         )
         db.add(node_vessel)
         db.flush()
@@ -1217,7 +1217,7 @@ def receive_edge_node_alert(
             name="UNIDENTIFIED DARK VESSEL",
             vessel_type="other",
             flag_state="Unknown",
-            region="atlantic_demo",
+            region="seapod_live",
             inspection_deficiencies=0,
         )
         db.add(dark_vessel)
