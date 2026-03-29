@@ -13,7 +13,7 @@ interface RegionStats {
 interface RegionSummaryProps {
   regions: Record<string, Region>;
   activeRegion: string | null;
-  onSelectRegion: (key: string) => void;
+  onSelectRegion: (key: string | null) => void;
 }
 
 const REGION_ABBREV: Record<string, string> = {
@@ -98,6 +98,18 @@ export default function RegionSummary({ regions, activeRegion, onSelectRegion }:
   return (
     <div className="flex-shrink-0 px-3 py-2 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700">
       <div className="flex gap-2">
+        {/* Global view button */}
+        <button
+          onClick={() => onSelectRegion(null)}
+          className={`
+            flex-shrink-0 w-[90px] px-3 py-2 rounded-lg border text-left transition-all
+            bg-[#111827] hover:bg-[#151d2e]
+            ${activeRegion === null ? "border-blue-500/30" : "border-[#1a2235]"}
+          `}
+        >
+          <div className="text-[11px] font-medium text-slate-200 mb-1">Global</div>
+          <div className="text-[10px] text-slate-400">All regions</div>
+        </button>
         {regionKeys.map((key) => {
           const region = regions[key];
           const stat = stats[key];
