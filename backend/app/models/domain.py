@@ -219,6 +219,7 @@ class PositionReportSchema(BaseModel):
         from_attributes = True
 
 
+
 class AnomalySignalSchema(BaseModel):
     anomaly_type: str
     severity: float
