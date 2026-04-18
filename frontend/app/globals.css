@@ -1,0 +1,176 @@
+@import "tailwindcss";
+
+:root {
+  --background: #070a12;
+  --foreground: #e2e8f0;
+  --panel-bg: #0d1320;
+  --panel-border: #1a2235;
+  --accent-blue: #3b82f6;
+  --accent-red: #ef4444;
+  --accent-yellow: #f59e0b;
+  --accent-green: #22c55e;
+  --accent-orange: #f97316;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-panel-bg: var(--panel-bg);
+  --color-panel-border: var(--panel-border);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-red: var(--accent-red);
+  --color-accent-yellow: var(--accent-yellow);
+  --color-accent-green: var(--accent-green);
+  --color-accent-orange: var(--accent-orange);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+}
+
+/* MapLibre overrides for dark theme */
+.maplibregl-popup-content {
+  background: #1a2235 !important;
+  color: #e2e8f0 !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+  border: 1px solid rgba(59, 130, 246, 0.15) !important;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: #1a2235 !important;
+}
+
+.maplibregl-ctrl-group {
+  background: #0d1320 !important;
+  border: 1px solid #1a2235 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
+}
+
+.maplibregl-ctrl-group button {
+  filter: invert(0.85);
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top-color: #1a2235 !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Pulse animation for risk dots */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px currentColor; }
+  50% { opacity: 0.6; box-shadow: 0 0 12px currentColor; }
+}
+
+@keyframes subtle-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slide-out-right {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes fade-in-up {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fade-out-up {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-12px); opacity: 0; }
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Loading skeleton shimmer */
+.skeleton {
+  background: linear-gradient(90deg, #111827 25%, #1a2235 50%, #111827 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* Cross-browser thin scrollbar */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #1e293b transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  height: 4px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 10px;
+}
+
+/* Timeline slider cross-browser */
+input[type="range"].timeline-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  width: 100%;
+  height: 4px;
+}
+input[type="range"].timeline-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #1a2235;
+  border-radius: 2px;
+}
+input[type="range"].timeline-slider::-moz-range-track {
+  height: 4px;
+  background: #1a2235;
+  border-radius: 2px;
+  border: none;
+}
+input[type="range"].timeline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #60a5fa;
+  border: 2px solid #0d1320;
+  margin-top: -4px;
+  box-shadow: 0 0 6px rgba(96, 165, 250, 0.3);
+}
+input[type="range"].timeline-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #60a5fa;
+  border: 2px solid #0d1320;
+  box-shadow: 0 0 6px rgba(96, 165, 250, 0.3);
+}

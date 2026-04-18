@@ -1,0 +1,231 @@
+"""Alert generation and management service."""
+
+from __future__ import annotations
+from datetime import datetime, timedelta
+import json
+import logging
+import uuid
+
+from sqlalchemy.orm import Session
+
+from app.models.domain import (
+    VesselORM, PositionReportORM, GeofenceORM,
+    AlertORM, AnomalySignalORM, AlertStatus,
+    AlertSchema, AnomalySignalSchema, AnomalyType,
+    RiskHistoryORM,
+)
+from app.services.anomaly_detection import run_anomaly_detection, compute_regional_stats
+from app.services.risk_scoring import compute_risk_assessment
+from app.services.pattern_learning import get_learned_baseline, refresh_baseline
+from app.data_sources.nws_adapter import get_weather
+
+logger = logging.getLogger("harboros.alerts")
+
+
+def generate_alerts_for_all_vessels(db: Session) -> list[AlertORM]:
+    """Run detection + scoring for all vessels, create/update alerts.
+
+    Includes:
+    - Vessel-type-aware anomaly detection (behavior profiles)
+    - Regional statistical context (outlier detection)
+    - Nearby-vessel data (collision risk)
+    - Learned historical baselines (route deviation, pattern matching)
+    """
+    vessels = db.query(VesselORM).all()
+    geofences = db.query(GeofenceORM).all()
+    alerts_created = []
+
+    # Pre-compute regional stats for statistical outlier detection
+    all_recent_positions = (
+        db.query(PositionReportORM)
+        .order_by(PositionReportORM.timestamp.desc())
+        .limit(5000)
+        .all()
+    )
+    regional_stats = compute_regional_stats(all_recent_positions)
+
+    # Load or refresh learned baselines from Parquet archives + SQLite
+    learned = get_learned_baseline()
+    if learned.last_refresh is None:
+        logger.info("Initializing learned baselines from historical data...")
+        refresh_baseline(db)
+
+    # Pre-compute latest positions for all vessels (for collision risk)
+    latest_positions = {}
+    for v in vessels:
+        latest = (
+            db.query(PositionReportORM)
+            .filter(PositionReportORM.vessel_id == v.id)
+            .order_by(PositionReportORM.timestamp.desc())
+            .first()
+        )
+        if latest:
+            latest_positions[v.id] = (
+                v.id, latest.latitude, latest.longitude,
+                latest.speed_over_ground, latest.course_over_ground, v.name
+            )
+    nearby_list = list(latest_positions.values())
+
+    # Fetch weather conditions (batched by grid cell via adapter cache)
+    weather_by_vessel: dict[str, object] = {}
+    for v_id, (_, lat, lon, *_rest) in latest_positions.items():
+        try:
+            weather_by_vessel[v_id] = get_weather(lat, lon)
+        except Exception:
+            weather_by_vessel[v_id] = None
+
+    for vessel in vessels:
+        positions = (
+            db.query(PositionReportORM)
+            .filter(PositionReportORM.vessel_id == vessel.id)
+            .order_by(PositionReportORM.timestamp)
+            .all()
+        )
+
+        # Skip edge node vessels — their alerts are managed by the edge endpoint
+        if vessel.id.startswith("dark-") or vessel.id.startswith("seapod-"):
+            continue
+
+        # Skip demo vessels whose alerts are manually seeded
+        if vessel.id in ("v-jade-star", "v-dark-optical-1", "v-dark-horizon"):
+            continue
+
+        if not positions:
+            # Resolve any ghost alerts for vessels with no position data
+            ghost_alert = (
+                db.query(AlertORM)
+                .filter(AlertORM.vessel_id == vessel.id, AlertORM.status == "active")
+                .first()
+            )
+            if ghost_alert:
+                ghost_alert.status = "resolved"
+                ghost_alert.explanation = "No position data available for behavioral assessment."
+            continue
+
+        signals = run_anomaly_detection(
+            vessel, positions, geofences,
+            regional_stats=regional_stats,
+            nearby_vessels=nearby_list,
+            learned_baseline=learned,
+            weather=weather_by_vessel.get(vessel.id),
+        )
+
+        assessment = compute_risk_assessment(vessel, signals)
+
+        # Record risk score snapshot for sparkline trend visualization
+        db.add(RiskHistoryORM(
+            vessel_id=vessel.id,
+            risk_score=assessment.risk_score,
+            recommended_action=assessment.recommended_action,
+        ))
+
+        # Check for existing active alert FIRST so we can clear it if risk drops
+        existing = (
+            db.query(AlertORM)
+            .filter(AlertORM.vessel_id == vessel.id, AlertORM.status == "active")
+            .first()
+        )
+
+        # Skip low-confidence assessments, but clear active alerts if they exist
+        if assessment.risk_score < 35:
+            if existing:
+                existing.status = "resolved"
+                existing.explanation = "Behavior returned to normal; risk score dropped below threshold."
+            continue
+
+        # COLREGS non-compliance alone isn't enough for an alert — it
+        # boosts other suspicious signals but needs additional context
+        # (AIS gap, spoofing, identity deception) to warrant operator attention.
+        signal_types = set(s.anomaly_type for s in signals)
+        if signal_types <= {AnomalyType.COLLISION_RISK}:
+            if existing:
+                existing.status = "resolved"
+                existing.explanation = "Elevated risk resolved down to standard COLREGS warning."
+            continue
+
+        if existing:
+            existing.risk_score = assessment.risk_score
+            existing.recommended_action = assessment.recommended_action
+            existing.explanation = assessment.explanation
+            existing.anomaly_signals_json = json.dumps([s.model_dump() for s in signals])
+            alert = existing
+        else:
+            alert = AlertORM(
+                id=str(uuid.uuid4()),
+                vessel_id=vessel.id,
+                risk_score=assessment.risk_score,
+                recommended_action=assessment.recommended_action,
+                explanation=assessment.explanation,
+                anomaly_signals_json=json.dumps([s.model_dump() for s in signals]),
+            )
+            db.add(alert)
+
+        # Replace signal records (delete old, insert new — fixes duplication)
+        db.query(AnomalySignalORM).filter(AnomalySignalORM.alert_id == alert.id).delete()
+        for signal in signals:
+            signal_orm = AnomalySignalORM(
+                alert_id=alert.id,
+                anomaly_type=signal.anomaly_type,
+                severity=signal.severity,
+                description=signal.description,
+                details_json=json.dumps(signal.details) if signal.details else None,
+            )
+            db.add(signal_orm)
+
+        alerts_created.append(alert)
+
+    # Prune risk history older than 24 hours to prevent unbounded growth
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    db.query(RiskHistoryORM).filter(RiskHistoryORM.timestamp < cutoff).delete()
+
+    db.commit()
+    return alerts_created
+
+
+def get_alerts(
+    db: Session,
+    status: str | None = None,
+    region: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[AlertSchema], int]:
+    """Get alerts with vessel info, sorted by risk score desc (paginated)."""
+    query = db.query(AlertORM).join(VesselORM)
+    if status:
+        query = query.filter(AlertORM.status == status)
+    if region:
+        query = query.filter(VesselORM.region == region)
+    query = query.order_by(AlertORM.risk_score.desc())
+
+    total = query.count()
+    alerts = query.offset(offset).limit(limit).all()
+
+    result = []
+    for alert in alerts:
+        signals = json.loads(alert.anomaly_signals_json) if alert.anomaly_signals_json else []
+        result.append(AlertSchema(
+            id=alert.id,
+            vessel_id=alert.vessel_id,
+            vessel_name=alert.vessel.name if alert.vessel else None,
+            vessel_mmsi=alert.vessel.mmsi if alert.vessel else None,
+            created_at=alert.created_at,
+            status=alert.status,
+            risk_score=alert.risk_score,
+            recommended_action=alert.recommended_action,
+            explanation=alert.explanation,
+            anomaly_signals=[AnomalySignalSchema(**s) for s in signals],
+        ))
+    return result, total
+
+
+def update_alert_status(db: Session, alert_id: str, status: str, notes: str | None = None) -> AlertORM | None:
+    """Update alert status (acknowledge, dismiss, pin)."""
+    alert = db.query(AlertORM).filter(AlertORM.id == alert_id).first()
+    if not alert:
+        return None
+    alert.status = status
+    if notes:
+        alert.operator_notes = notes
+    db.commit()
+    db.refresh(alert)
+    return alert
