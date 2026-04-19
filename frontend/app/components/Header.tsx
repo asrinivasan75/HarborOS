@@ -19,13 +19,13 @@ export default function Header({
     <header className="h-14 glass-strong border-b border-white/[0.08] flex items-center justify-between px-5 shrink-0 relative z-20">
       <div className="flex items-center gap-5">
         <Link href="/" className="flex items-center gap-2.5 hover:opacity-90 transition-opacity">
-          <div className="relative w-7 h-7 rounded-lg bg-gradient-to-br from-violet-400 to-cyan-400 flex items-center justify-center shadow-[0_4px_16px_rgba(167,139,250,0.35)]">
-            <div className="absolute inset-[2px] rounded-[5px] bg-gradient-to-br from-[#1a1230] to-[#0d1a2a]" />
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="relative z-10 text-white">
+          <div className="relative w-6 h-6 rounded-md bg-gradient-to-br from-violet-400 to-cyan-400 flex items-center justify-center">
+            <div className="absolute inset-[1.5px] rounded-[4px] bg-gradient-to-br from-[#1a1230] to-[#0d1a2a]" />
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="relative z-10 text-white">
               <path d="M12 2L3 7v10l9 5 9-5V7l-9-5z" />
             </svg>
           </div>
-          <span className="text-[15px] font-bold tracking-tight text-slate-100 leading-none">HarborOS</span>
+          <span className="text-[14px] font-semibold tracking-tight text-slate-100 leading-none">HarborOS</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 ml-2">
@@ -56,20 +56,20 @@ export default function Header({
         </button>
 
         {!connectionOk && (
-          <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 rounded-full px-3 py-1 ml-1">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 shadow-[0_0_8px_#f87171]" style={{ animation: "subtle-pulse 1s infinite" }} />
+          <div className="flex items-center gap-1.5 border border-red-400/25 rounded-full px-2.5 py-1 ml-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400" style={{ animation: "subtle-pulse 1.4s infinite" }} />
             <span className="text-[10px] font-semibold text-red-300 tracking-wider font-mono">OFFLINE</span>
           </div>
         )}
 
         {isLive ? (
-          <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-400/25 rounded-full px-3 py-1 ml-1">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#4ade80]" style={{ animation: "subtle-pulse 2s infinite" }} />
+          <div className="flex items-center gap-1.5 border border-emerald-400/20 rounded-full px-2.5 py-1 ml-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" style={{ animation: "subtle-pulse 2.4s infinite" }} />
             <span className="text-[10px] font-semibold text-emerald-300 tracking-wider font-mono">LIVE</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-400/25 rounded-full px-3 py-1 ml-1">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24]" />
+          <div className="flex items-center gap-1.5 border border-amber-400/20 rounded-full px-2.5 py-1 ml-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
             <span className="text-[10px] font-semibold text-amber-300 tracking-wider font-mono">SCENARIO</span>
           </div>
         )}

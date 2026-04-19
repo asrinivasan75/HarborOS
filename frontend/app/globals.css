@@ -48,16 +48,15 @@ body {
   font-feature-settings: "cv11", "ss01", "ss03";
 }
 
-/* Ambient glow — applied globally behind all pages for Sentinel feel */
+/* Ambient glow — barely there, just enough to avoid flat black */
 .ambient-glow {
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(ellipse 80% 50% at 10% 0%, rgba(167, 139, 250, 0.10), transparent 60%),
-    radial-gradient(ellipse 60% 50% at 90% 30%, rgba(34, 211, 238, 0.08), transparent 60%),
-    radial-gradient(ellipse 70% 60% at 50% 120%, rgba(244, 114, 182, 0.05), transparent 60%);
+    radial-gradient(ellipse 60% 40% at 15% 0%, rgba(167, 139, 250, 0.035), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 85% 20%, rgba(34, 211, 238, 0.025), transparent 70%);
 }
 
 body > *:not(.ambient-glow) {
@@ -89,17 +88,26 @@ body > *:not(.ambient-glow) {
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-/* Gradient accent button */
-.btn-gradient {
-  background: linear-gradient(135deg, #a78bfa 0%, #22d3ee 100%);
-  color: #08121f;
-  font-weight: 700;
-  box-shadow: 0 8px 32px rgba(167, 139, 250, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  transition: transform 0.2s, box-shadow 0.2s;
+/* Primary button — clean, minimal shadow, no bloom */
+.btn-primary {
+  background: #e7ebf3;
+  color: #0a0e1a;
+  font-weight: 600;
+  transition: background 0.15s;
 }
-.btn-gradient:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 40px rgba(167, 139, 250, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+.btn-primary:hover {
+  background: #fff;
+}
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.04);
+  color: #e7ebf3;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 /* MapLibre overrides for Sentinel */

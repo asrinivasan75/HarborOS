@@ -270,7 +270,7 @@ export default function MapView({
   const markersRef = useRef<Record<string, { marker: maplibregl.Marker; el: HTMLDivElement }>>({});
   const [mapMode, setMapMode] = useState<MapMode>("maps");
   const [satelliteTiles, setSatelliteTiles] = useState<SatelliteTileSource | null>(null);
-  const [hideNormal, setHideNormal] = useState(false);
+  const hideNormal = false;
   const [zoomLevel, setZoomLevel] = useState(12.5);
   const showMarkers = zoomLevel >= HEATMAP_ZOOM_THRESHOLD;
   const centerChangeRef = useRef(onMapCenterChange);
@@ -688,35 +688,6 @@ export default function MapView({
   return (
     <div className="absolute inset-0">
       <div ref={mapContainer} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" }} />
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-[#0d1320]/95 backdrop-blur-md border border-[#1a2235] rounded-xl p-3.5 text-[10px] shadow-2xl shadow-black/50 ring-1 ring-white/[0.03]">
-        <div className="text-[9px] text-slate-500 uppercase tracking-[0.15em] mb-2.5 font-semibold">Risk Level</div>
-        <div className="space-y-2">
-          <LegendItem color="#22c55e" label="Normal" />
-          <LegendItem color="#f59e0b" label="Monitor" />
-          <LegendItem color="#f97316" label="Verify" />
-          <LegendItem color="#ef4444" label="Escalate" />
-        </div>
-        <button
-          onClick={() => setHideNormal(!hideNormal)}
-          className={`mt-3 w-full text-[9px] font-semibold uppercase tracking-wider px-2 py-1.5 rounded-md transition-all ${
-            hideNormal
-              ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-              : "text-slate-500 hover:text-slate-400 border border-[#1a2235] hover:bg-[#111827]"
-          }`}
-        >
-          {hideNormal ? "Show all vessels" : "Hide normal vessels"}
-        </button>
-        <div className="border-t border-[#1a2235] mt-3 pt-3 text-[9px] text-slate-500 uppercase tracking-[0.15em] mb-2.5 font-semibold">
-          Zones
-        </div>
-        <div className="space-y-2">
-          <LegendItem color="#ef4444" label="Restricted" dashed />
-          <LegendItem color="#f97316" label="Security" dashed />
-          <LegendItem color="#3b82f6" label="Shipping Lane" dashed />
-          <LegendItem color="#22c55e" label="Anchorage" dashed />
-        </div>
-      </div>
       {/* Base map toggle */}
       <div className="absolute bottom-4 right-4 bg-[#0d1320]/95 backdrop-blur-md border border-[#1a2235] rounded-xl overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-white/[0.03] flex">
         <button
@@ -760,20 +731,3 @@ export default function MapView({
   );
 }
 
-function LegendItem({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
-  const legendHull = "M5 0 L2 4 L1.5 8 L1.5 24 L3 28 L7 28 L8.5 24 L8.5 8 L8 4 Z";
-  const legendBridge = "M2.5 20 L7.5 20 L7.5 26 L2.5 26 Z";
-  return (
-    <div className="flex items-center gap-2.5">
-      {dashed ? (
-        <div className="w-4 h-0 border-t-[1.5px] border-dashed" style={{ borderColor: color }} />
-      ) : (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 28" width="5" height="14" style={{ filter: `drop-shadow(0 0 3px ${color}80)` }}>
-          <path d={legendHull} fill={color} stroke="rgba(0,0,0,0.5)" strokeWidth="0.6" strokeLinejoin="round" />
-          <path d={legendBridge} fill="rgba(255,255,255,0.3)" stroke="none" />
-        </svg>
-      )}
-      <span className="text-slate-400">{label}</span>
-    </div>
-  );
-}

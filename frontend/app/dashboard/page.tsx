@@ -2,14 +2,15 @@
 
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import Header from "@/app/components/Header";
-import AlertFeed from "@/app/components/AlertFeed";
 import MapView from "@/app/components/MapView";
 import VesselDetailPanel from "@/app/components/VesselDetail";
 import FeatureTour from "@/app/components/FeatureTour";
-import RegionSummary from "@/app/components/RegionSummary";
 import RiskDistributionPanel from "@/app/components/RiskDistribution";
 import Toast from "@/app/components/Toast";
+import FloatingChrome from "@/app/components/FloatingChrome";
+import AlertPeeks from "@/app/components/AlertPeeks";
+import CommandPalette from "@/app/components/CommandPalette";
+import IngestBanner from "@/app/components/IngestBanner";
 import type { ToastItem } from "@/app/components/Toast";
 import type { SatelliteOverlay } from "@/app/components/MapView";
 import { api } from "@/app/lib/api";
@@ -50,6 +51,7 @@ function Dashboard() {
   const [analyticsClosing, setAnalyticsClosing] = useState(false);
   const [connectionOk, setConnectionOk] = useState(true);
   const [featureTourActive, setFeatureTourActive] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
   const searchParams = useSearchParams();
   const autoTour = searchParams.get("tour") === "1";
   const liveVesselsRef = useRef<Vessel[]>([]);
@@ -293,13 +295,20 @@ function Dashboard() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // ⌘K / Ctrl+K → command palette (works from inputs too)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandOpen((v) => !v);
+        return;
+      }
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "Escape") {
-        if (selectedVessel) handleCloseDetail();
+        if (commandOpen) setCommandOpen(false);
+        else if (selectedVessel) handleCloseDetail();
         else if (showAnalytics) handleToggleAnalytics();
       }
       if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
-        showToast("Shortcuts: Esc = close panel · A = analytics · ? = help", "info");
+        showToast("Shortcuts: ⌘K = command · Esc = close · A = analytics", "info");
       }
       if (e.key === "a" && !e.ctrlKey && !e.metaKey) {
         handleToggleAnalytics();
@@ -307,133 +316,133 @@ function Dashboard() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedVessel, showAnalytics, handleCloseDetail, handleToggleAnalytics, showToast]);
+  }, [selectedVessel, showAnalytics, commandOpen, handleCloseDetail, handleToggleAnalytics, showToast]);
 
   if (loading) {
     return (
-      <div className="h-screen flex flex-col bg-[#070a12]">
-        <Header alertCount={0} vesselCount={0} isLive={false} onToggleAnalytics={() => {}} connectionOk={true} />
-        <div className="flex-shrink-0 px-3 py-2 flex gap-2">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="skeleton w-[120px] h-[52px] shrink-0" />
-          ))}
+      <div className="h-screen relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_40%_30%,rgba(167,139,250,0.06),transparent_50%),radial-gradient(ellipse_at_70%_70%,rgba(34,211,238,0.04),transparent_50%)]" />
+        <div className="absolute top-3 left-3 right-3 flex items-center gap-2">
+          <div className="skeleton h-8 w-32 rounded-full" />
+          <div className="skeleton h-8 w-40 rounded-full" />
+          <div className="skeleton h-8 w-56 rounded-full" />
+          <div className="flex-1" />
+          <div className="skeleton h-8 w-20 rounded-full" />
+          <div className="skeleton h-8 w-24 rounded-full" />
+          <div className="skeleton h-8 w-16 rounded-full" />
         </div>
-        <div className="flex-1 flex overflow-hidden">
-          <div className="w-80 bg-[#0d1320] border-r border-[#1a2235] p-3 space-y-2">
-            <div className="skeleton h-8 w-full mb-3" />
-            <div className="skeleton h-7 w-full" />
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="skeleton h-[84px] w-full" />
-            ))}
-          </div>
-          <div className="flex-1 relative">
-            <div className="absolute inset-0 skeleton" style={{ borderRadius: 0 }} />
-          </div>
-        </div>
-        <div className="skeleton h-10 w-full" style={{ borderRadius: 0 }} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="h-screen flex flex-col bg-[#070a12]">
-        <Header alertCount={0} vesselCount={0} isLive={false} onToggleAnalytics={handleToggleAnalytics} />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-sm">
-            <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-5">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-red-400">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-            </div>
-            <p className="text-sm font-medium text-slate-200 mb-2">Connection Failed</p>
-            <p className="text-xs text-slate-500 leading-relaxed">{error}</p>
+      <div className="h-screen flex items-center justify-center">
+        <div className="text-center max-w-sm glass rounded-2xl p-8">
+          <div className="w-12 h-12 rounded-2xl bg-red-400/10 border border-red-400/25 flex items-center justify-center mx-auto mb-4">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-red-300">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
           </div>
+          <p className="text-[15px] font-semibold text-slate-100 mb-2">Connection failed</p>
+          <p className="text-[13px] text-slate-400 leading-relaxed">{error}</p>
         </div>
       </div>
     );
   }
 
   const isLive = ingestionStatus?.running && ingestionStatus?.connected;
+  const activeCount = alerts.filter((a) => a.status === "active").length;
 
   return (
-    <div className="h-screen flex flex-col bg-[#070a12]">
-      <Header
-        alertCount={alerts.filter((a) => a.status === "active").length}
-        vesselCount={vessels.length}
-        isLive={!!isLive}
-        positionsIngested={ingestionStatus?.positions_ingested}
-        onToggleAnalytics={handleToggleAnalytics}
-        analyticsOpen={showAnalytics}
-        connectionOk={connectionOk}
+    <div className="h-screen relative overflow-hidden" data-tour="map">
+      {/* Full-bleed map */}
+      <MapView
+        vessels={vessels}
+        geofences={geofences}
+        selectedVesselId={selectedVessel?.id ?? null}
+        onSelectVessel={handleSelectVessel}
+        flyTo={mapTarget}
+        satelliteOverlay={satelliteOverlay}
+        onMapCenterChange={setMapCenter}
+        onMapClick={setMapClickFocus}
       />
-      <RegionSummary
+
+      {/* Floating top strip */}
+      <FloatingChrome
         regions={regions}
         activeRegion={activeRegion}
         onSelectRegion={handleRegionChange}
+        alertCount={activeCount}
+        isLive={!!isLive}
+        connectionOk={connectionOk}
+        onToggleAnalytics={handleToggleAnalytics}
+        analyticsOpen={showAnalytics}
+        onOpenCommandPalette={() => setCommandOpen(true)}
       />
-      <div className="flex-1 flex overflow-hidden">
-        <AlertFeed
-          alerts={alerts}
-          alertsTotal={alertsTotal}
-          selectedAlertId={selectedAlertId}
-          onSelectAlert={handleSelectAlert}
-          onLoadMore={handleLoadMoreAlerts}
-          statusFilter={alertStatusFilter}
-          onStatusFilterChange={(f: string) => {
-            setAlertStatusFilter(f);
-            // Immediately refetch with new filter
-            const regionParam = activeRegion || undefined;
-            api.getAlerts(f || undefined, regionParam, alertsLimitRef.current).then((a) => {
-              setAlerts(a.items);
-              setAlertsTotal(a.total);
-            }).catch(() => {});
-          }}
+
+      {/* Ingest banner — shows when vessel count is low */}
+      <IngestBanner
+        vesselCount={vessels.length}
+        positionsIngested={ingestionStatus?.positions_ingested}
+        isLive={!!isLive}
+        connectionOk={connectionOk}
+      />
+
+      {/* Alert peeks, bottom-left */}
+      <AlertPeeks
+        alerts={alerts}
+        onSelectAlert={handleSelectAlert}
+        selectedAlertId={selectedAlertId}
+      />
+
+      {/* Command palette (⌘K) */}
+      <CommandPalette
+        open={commandOpen}
+        onClose={() => setCommandOpen(false)}
+        alerts={alerts}
+        vessels={vessels}
+        regions={regions}
+        activeRegion={activeRegion}
+        onSelectAlert={handleSelectAlert}
+        onSelectRegion={handleRegionChange}
+        onToggleAnalytics={handleToggleAnalytics}
+      />
+
+      <FeatureTour
+        active={featureTourActive}
+        onComplete={() => setFeatureTourActive(false)}
+        onSelectRegion={handleRegionChange}
+        onSelectVessel={handleSelectVessel}
+        onDeselectVessel={() => { if (selectedVessel) handleCloseDetail(); }}
+        onToggleAnalytics={handleToggleAnalytics}
+        onFlyTo={(center, zoom) => setMapTarget({ center, zoom, _t: Date.now() })}
+        analyticsOpen={showAnalytics}
+        activeRegion={activeRegion}
+      />
+
+      {(showAnalytics || analyticsClosing) && (
+        <RiskDistributionPanel
+          data={analyticsData}
+          onClose={handleToggleAnalytics}
+          closing={analyticsClosing}
         />
-        <div className="flex-1 relative" data-tour="map">
-          <MapView
-            vessels={vessels}
-            geofences={geofences}
-            selectedVesselId={selectedVessel?.id ?? null}
-            onSelectVessel={handleSelectVessel}
-            flyTo={mapTarget}
-            satelliteOverlay={satelliteOverlay}
-            onMapCenterChange={setMapCenter}
-            onMapClick={setMapClickFocus}
-          />
-          <FeatureTour
-            active={featureTourActive}
-            onComplete={() => setFeatureTourActive(false)}
-            onSelectRegion={handleRegionChange}
-            onSelectVessel={handleSelectVessel}
-            onDeselectVessel={() => { if (selectedVessel) handleCloseDetail(); }}
-            onToggleAnalytics={handleToggleAnalytics}
-            onFlyTo={(center, zoom) => setMapTarget({ center, zoom, _t: Date.now() })}
-            analyticsOpen={showAnalytics}
-            activeRegion={activeRegion}
-          />
-          {(showAnalytics || analyticsClosing) && (
-            <RiskDistributionPanel
-              data={analyticsData}
-              onClose={handleToggleAnalytics}
-              closing={analyticsClosing}
-            />
-          )}
-        </div>
-        {selectedVessel && (
-          <VesselDetailPanel
-            vessel={selectedVessel}
-            alertId={selectedAlertId}
-            onSatelliteOverlay={setSatelliteOverlay}
-            verificationFocus={verificationFocus}
-            onClose={handleCloseDetail}
-            onAlertAction={handleAlertAction}
-            closing={detailClosing}
-          />
-        )}
-      </div>
+      )}
+
+      {selectedVessel && (
+        <VesselDetailPanel
+          vessel={selectedVessel}
+          alertId={selectedAlertId}
+          onSatelliteOverlay={setSatelliteOverlay}
+          verificationFocus={verificationFocus}
+          onClose={handleCloseDetail}
+          onAlertAction={handleAlertAction}
+          closing={detailClosing}
+        />
+      )}
+
       <Toast toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
