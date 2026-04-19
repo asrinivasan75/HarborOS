@@ -206,6 +206,57 @@ body > *:not(.ambient-glow) {
   animation: ring-pulse 2s infinite;
 }
 
+/* Logomark sweep */
+@keyframes hos-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Exit (return home) iris */
+@keyframes exit-iris-top {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+@keyframes exit-iris-bottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes exit-iris-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes exit-iris-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.exit-iris-top    { clip-path: polygon(0 0, 100% 0, 100% 48%, 0 48%); animation: exit-iris-top 0.55s cubic-bezier(0.77, 0, 0.175, 1) forwards; }
+.exit-iris-bottom { clip-path: polygon(0 52%, 100% 52%, 100% 100%, 0 100%); animation: exit-iris-bottom 0.55s cubic-bezier(0.77, 0, 0.175, 1) forwards; }
+.exit-iris-left   { clip-path: polygon(0 48%, 48% 48%, 48% 52%, 0 52%); animation: exit-iris-left 0.55s cubic-bezier(0.77, 0, 0.175, 1) 0.05s forwards; }
+.exit-iris-right  { clip-path: polygon(52% 48%, 100% 48%, 100% 52%, 52% 52%); animation: exit-iris-right 0.55s cubic-bezier(0.77, 0, 0.175, 1) 0.05s forwards; }
+
+@keyframes exit-core {
+  0% { opacity: 0; transform: scale(0.85); }
+  35% { opacity: 1; transform: scale(1); }
+  80% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.94); }
+}
+.exit-core { animation: exit-core 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both; }
+
+@keyframes exit-ring {
+  0% { transform: scale(0.4); opacity: 0; }
+  25% { opacity: 0.8; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+.exit-ring { animation: exit-ring 1.3s ease-out 0.35s both; }
+.exit-ring-2 { animation-delay: 0.55s; }
+.exit-ring-3 { animation-delay: 0.75s; }
+
+/* Ingest scanner line */
+@keyframes ingest-scan {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(433%); }
+}
+
 /* Launch overlay */
 @keyframes launch-fade-in {
   from { opacity: 0; }

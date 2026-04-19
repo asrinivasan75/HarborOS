@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>HarborOS — Logo Concepts</title>
+<style>
+  :root {
+    --bg: #080b14;
+    --bg-2: #0e1220;
+    --panel: rgba(18, 22, 36, 0.6);
+    --panel-strong: rgba(18, 22, 36, 0.85);
+    --fg: #e7ebf3;
+    --dim: #9aa3b8;
+    --xdim: #596079;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --violet: #a78bfa;
+    --cyan: #22d3ee;
+    --pink: #f472b6;
+    --emerald: #34d399;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 15% 0%, rgba(167,139,250,0.06), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 85% 20%, rgba(34,211,238,0.045), transparent 70%);
+  }
+  .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .gradient-text {
+    background: linear-gradient(120deg, #a78bfa 0%, #22d3ee 50%, #f472b6 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 32px 96px; position: relative; z-index: 1; }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 28px; margin-bottom: 36px; }
+  h1 { font-size: 40px; letter-spacing: -0.03em; margin: 0 0 10px; font-weight: 600; }
+  h1 small { display: block; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--xdim); margin-bottom: 12px; }
+  .tag { color: var(--dim); font-size: 14px; max-width: 640px; line-height: 1.6; }
+
+  .grid {
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  }
+  .card {
+    background: var(--panel);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px;
+    display: flex; flex-direction: column; gap: 18px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--border-strong); }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .card-num { font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: 0.18em; color: var(--xdim); text-transform: uppercase; }
+  .card-name { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .card-rationale { font-size: 12.5px; line-height: 1.55; color: var(--dim); }
+
+  .stage {
+    display: flex; align-items: center; justify-content: center;
+    background: #0a0e1a;
+    border-radius: 10px;
+    padding: 36px 18px;
+    border: 1px solid rgba(255,255,255,0.04);
+    min-height: 140px;
+    position: relative;
+  }
+  .stage.light { background: #f5f7fb; }
+  .stage-label { position: absolute; top: 8px; left: 10px; font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--xdim); }
+  .stage.light .stage-label { color: #b7bdcd; }
+
+  .lockup { display: flex; align-items: center; gap: 10px; }
+  .wordmark { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+  .stage.light .wordmark { color: #0a0e1a; }
+  .small-row {
+    display: flex; align-items: center; gap: 20px; justify-content: center; padding-top: 10px; border-top: 1px dashed var(--border);
+  }
+  .small-row > div { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .small-row small { font-family: "JetBrains Mono", monospace; font-size: 9.5px; color: var(--xdim); letter-spacing: 0.1em; }
+
+  .intro {
+    display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; align-items: center;
+    padding: 28px; border: 1px solid var(--border); border-radius: 18px;
+    background: linear-gradient(180deg, rgba(167,139,250,0.04), rgba(34,211,238,0.02));
+    margin-bottom: 36px;
+  }
+  .intro h2 { font-size: 20px; letter-spacing: -0.02em; margin: 0 0 8px; font-weight: 600; }
+  .intro p { color: var(--dim); font-size: 13.5px; line-height: 1.6; margin: 0; }
+  .palette { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .swatch { display: flex; flex-direction: column; gap: 4px; }
+  .swatch .chip { width: 56px; height: 56px; border-radius: 10px; border: 1px solid var(--border); }
+  .swatch small { font-family: "JetBrains Mono", monospace; font-size: 9.5px; color: var(--xdim); letter-spacing: 0.08em; }
+
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 48px 0 16px; padding-top: 28px; border-top: 1px solid var(--border); }
+  .section-head h3 { font-size: 17px; letter-spacing: -0.02em; margin: 0; font-weight: 600; }
+  .section-head .mono { font-size: 11px; color: var(--xdim); letter-spacing: 0.18em; text-transform: uppercase; }
+
+  @media (max-width: 720px) {
+    .intro { grid-template-columns: 1fr; }
+    .wrap { padding: 28px 16px 64px; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="g-sentinel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#a78bfa" />
+      <stop offset="55%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#f472b6" />
+    </linearGradient>
+    <linearGradient id="g-v2c" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#a78bfa" />
+      <stop offset="100%" stop-color="#22d3ee" />
+    </linearGradient>
+    <linearGradient id="g-inner" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1230" />
+      <stop offset="100%" stop-color="#0d1a2a" />
+    </linearGradient>
+    <radialGradient id="g-pulse" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.8" />
+      <stop offset="70%" stop-color="#22d3ee" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header>
+    <h1><small>Logo Exploration · v1</small>HarborOS <span class="gradient-text">logomark concepts</span></h1>
+    <p class="tag">Twelve directions for the HarborOS identity. Each concept is shown as a mark, a horizontal lockup, and favicon-scale to stress-test legibility. Palette is anchored to the existing Sentinel gradient (violet → cyan → pink).</p>
+  </header>
+
+  <div class="intro">
+    <div>
+      <h2>Design brief</h2>
+      <p>Maritime intelligence console. Reads as defense-grade software, not a shipping brand. Priorities: <strong style="color:var(--fg)">legible at 16px</strong>, <strong style="color:var(--fg)">neutral on dark</strong>, <strong style="color:var(--fg)">distinctive without a literal anchor</strong>. Wordmark sets in Inter Semibold, -0.02em tracking.</p>
+    </div>
+    <div>
+      <div class="palette">
+        <div class="swatch"><div class="chip" style="background:#a78bfa"></div><small>#a78bfa</small></div>
+        <div class="swatch"><div class="chip" style="background:#22d3ee"></div><small>#22d3ee</small></div>
+        <div class="swatch"><div class="chip" style="background:#f472b6"></div><small>#f472b6</small></div>
+        <div class="swatch"><div class="chip" style="background:linear-gradient(135deg,#a78bfa,#22d3ee,#f472b6)"></div><small>Sentinel</small></div>
+        <div class="swatch"><div class="chip" style="background:#0e1220"></div><small>#0e1220</small></div>
+        <div class="swatch"><div class="chip" style="background:#e7ebf3"></div><small>#e7ebf3</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <h3>Concepts</h3>
+    <span class="mono">01 · 12</span>
+  </div>
+
+  <div class="grid">
+
+    <!-- 01 SHIELD HULL (current) -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">01 · Baseline</div>
+          <div class="card-name">Shield · Hull</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <rect x="6" y="6" width="68" height="68" rx="16" fill="url(#g-sentinel)"/>
+          <rect x="11" y="11" width="58" height="58" rx="12" fill="url(#g-inner)"/>
+          <path d="M40 20 L22 29 V50 L40 60 L58 50 V29 Z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><rect x="6" y="6" width="68" height="68" rx="16" fill="url(#g-sentinel)"/><rect x="11" y="11" width="58" height="58" rx="12" fill="url(#g-inner)"/><path d="M40 20 L22 29 V50 L40 60 L58 50 V29 Z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><rect x="6" y="6" width="68" height="68" rx="16" fill="url(#g-sentinel)"/><rect x="11" y="11" width="58" height="58" rx="12" fill="url(#g-inner)"/><path d="M40 20 L22 29 V50 L40 60 L58 50 V29 Z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><rect x="6" y="6" width="68" height="68" rx="16" fill="url(#g-sentinel)"/><rect x="11" y="11" width="58" height="58" rx="12" fill="url(#g-inner)"/><path d="M40 20 L22 29 V50 L40 60 L58 50 V29 Z" fill="none" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">Current mark. Gradient frame with an inset hull pentagon. Works, but reads generic — the pentagon is doing double duty as shield and vessel.</p>
+    </div>
+
+    <!-- 02 COMPASS ROSE -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">02 · Navigation</div>
+          <div class="card-name">Compass Rose</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="32" fill="none" stroke="url(#g-v2c)" stroke-width="1.5" opacity="0.55"/>
+          <circle cx="40" cy="40" r="22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+          <path d="M40 10 L44 40 L40 70 L36 40 Z" fill="url(#g-v2c)"/>
+          <path d="M10 40 L40 44 L70 40 L40 36 Z" fill="#e7ebf3" opacity="0.72"/>
+          <circle cx="40" cy="40" r="3" fill="#f472b6"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><circle cx="40" cy="40" r="32" fill="none" stroke="url(#g-v2c)" stroke-width="1.5" opacity="0.55"/><circle cx="40" cy="40" r="22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1"/><path d="M40 10 L44 40 L40 70 L36 40 Z" fill="url(#g-v2c)"/><path d="M10 40 L40 44 L70 40 L40 36 Z" fill="#e7ebf3" opacity="0.72"/><circle cx="40" cy="40" r="3" fill="#f472b6"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><path d="M40 10 L44 40 L40 70 L36 40 Z" fill="url(#g-v2c)"/><path d="M10 40 L40 44 L70 40 L40 36 Z" fill="#e7ebf3" opacity="0.72"/><circle cx="40" cy="40" r="3" fill="#f472b6"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><path d="M40 10 L44 40 L40 70 L36 40 Z" fill="url(#g-v2c)"/><path d="M10 40 L40 44 L70 40 L40 36 Z" fill="#e7ebf3"/><circle cx="40" cy="40" r="4" fill="#f472b6"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">Two-needle compass rose — N/S gradient, E/W white, pink centerpoint. Immediately reads as orientation. Scales cleanly to favicon because the cross holds shape.</p>
+    </div>
+
+    <!-- 03 RADAR SWEEP -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">03 · Surveillance</div>
+          <div class="card-name">Radar · Sweep</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+          <circle cx="40" cy="40" r="24" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+          <circle cx="40" cy="40" r="14" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+          <path d="M40 40 L40 6 A34 34 0 0 1 70 52 Z" fill="url(#g-v2c)" opacity="0.55"/>
+          <line x1="40" y1="40" x2="40" y2="6" stroke="#22d3ee" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="56" cy="28" r="2.5" fill="#f472b6"/>
+          <circle cx="30" cy="48" r="1.8" fill="#e7ebf3" opacity="0.6"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/><circle cx="40" cy="40" r="24" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/><path d="M40 40 L40 6 A34 34 0 0 1 70 52 Z" fill="url(#g-v2c)" opacity="0.55"/><line x1="40" y1="40" x2="40" y2="6" stroke="#22d3ee" stroke-width="2.4" stroke-linecap="round"/><circle cx="56" cy="28" r="2.5" fill="#f472b6"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="2"/><path d="M40 40 L40 6 A34 34 0 0 1 70 52 Z" fill="url(#g-v2c)"/><line x1="40" y1="40" x2="40" y2="6" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="3"/><path d="M40 40 L40 6 A34 34 0 0 1 70 52 Z" fill="url(#g-v2c)"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">Concentric rings with a quarter-sweep and a single detected contact. Strongest "surveillance" read of the set. Lends itself to an animated version on the landing page.</p>
+    </div>
+
+    <!-- 04 HORIZON / SCAN LINE -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">04 · Horizon</div>
+          <div class="card-name">Horizon · Scan</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <rect x="6" y="6" width="68" height="68" rx="16" fill="url(#g-inner)" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+          <path d="M14 50 Q 28 44, 40 46 T 66 48" stroke="#22d3ee" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M14 56 Q 28 50, 40 52 T 66 54" stroke="#a78bfa" stroke-width="1.6" fill="none" opacity="0.7" stroke-linecap="round"/>
+          <line x1="14" y1="26" x2="66" y2="26" stroke="url(#g-v2c)" stroke-width="1.8" stroke-dasharray="3 3"/>
+          <circle cx="54" cy="26" r="2.5" fill="#f472b6"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><rect x="6" y="6" width="68" height="68" rx="16" fill="url(#g-inner)" stroke="rgba(255,255,255,0.12)" stroke-width="1"/><path d="M14 50 Q 28 44, 40 46 T 66 48" stroke="#22d3ee" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M14 56 Q 28 50, 40 52 T 66 54" stroke="#a78bfa" stroke-width="1.8" fill="none" opacity="0.7" stroke-linecap="round"/><line x1="14" y1="26" x2="66" y2="26" stroke="url(#g-v2c)" stroke-width="2.2" stroke-dasharray="4 3"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><rect x="6" y="6" width="68" height="68" rx="16" fill="url(#g-inner)" stroke="url(#g-v2c)" stroke-width="2"/><path d="M14 52 Q 28 44, 40 46 T 66 48" stroke="#22d3ee" stroke-width="4" fill="none" stroke-linecap="round"/><line x1="14" y1="26" x2="66" y2="26" stroke="#f472b6" stroke-width="3"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><rect x="6" y="6" width="68" height="68" rx="16" fill="url(#g-v2c)"/><path d="M12 52 Q 40 40, 68 52" stroke="#0e1220" stroke-width="7" fill="none" stroke-linecap="round"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">Tagline made literal — "for every horizon." Two wave strokes under a dashed scan line with a single contact. Distinctive but the worst at favicon scale.</p>
+    </div>
+
+    <!-- 05 H MONOGRAM -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">05 · Typographic</div>
+          <div class="card-name">H · Monogram</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <rect x="6" y="6" width="68" height="68" rx="20" fill="url(#g-sentinel)"/>
+          <rect x="11" y="11" width="58" height="58" rx="15" fill="#0b0f1a"/>
+          <rect x="24" y="22" width="6" height="36" rx="1.5" fill="#e7ebf3"/>
+          <rect x="50" y="22" width="6" height="36" rx="1.5" fill="#e7ebf3"/>
+          <rect x="24" y="37" width="32" height="6" rx="1.5" fill="url(#g-v2c)"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><rect x="6" y="6" width="68" height="68" rx="20" fill="url(#g-sentinel)"/><rect x="11" y="11" width="58" height="58" rx="15" fill="#0b0f1a"/><rect x="24" y="22" width="6" height="36" rx="1.5" fill="#e7ebf3"/><rect x="50" y="22" width="6" height="36" rx="1.5" fill="#e7ebf3"/><rect x="24" y="37" width="32" height="6" rx="1.5" fill="url(#g-v2c)"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><rect x="6" y="6" width="68" height="68" rx="20" fill="url(#g-sentinel)"/><rect x="11" y="11" width="58" height="58" rx="15" fill="#0b0f1a"/><rect x="24" y="22" width="6" height="36" rx="1.5" fill="#e7ebf3"/><rect x="50" y="22" width="6" height="36" rx="1.5" fill="#e7ebf3"/><rect x="24" y="37" width="32" height="6" rx="1.5" fill="url(#g-v2c)"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><rect x="6" y="6" width="68" height="68" rx="22" fill="url(#g-sentinel)"/><rect x="22" y="20" width="8" height="40" rx="2" fill="#0b0f1a"/><rect x="50" y="20" width="8" height="40" rx="2" fill="#0b0f1a"/><rect x="22" y="36" width="36" height="8" rx="2" fill="#0b0f1a"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">Letter-first. The crossbar is a gradient signal line. Safest choice for favicon — stays crisp at 16×16. Risk: generic without a secondary symbol in the lockup.</p>
+    </div>
+
+    <!-- 06 PULSE / BUOY -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">06 · Signal</div>
+          <div class="card-name">Buoy · Pulse</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="28" fill="url(#g-pulse)" />
+          <circle cx="40" cy="40" r="22" fill="none" stroke="rgba(167,139,250,0.35)" stroke-width="1"/>
+          <circle cx="40" cy="40" r="14" fill="none" stroke="rgba(34,211,238,0.6)" stroke-width="1.2"/>
+          <circle cx="40" cy="40" r="6" fill="url(#g-v2c)"/>
+          <circle cx="40" cy="40" r="2.4" fill="#e7ebf3"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><circle cx="40" cy="40" r="28" fill="url(#g-pulse)" /><circle cx="40" cy="40" r="22" fill="none" stroke="rgba(167,139,250,0.35)" stroke-width="1"/><circle cx="40" cy="40" r="14" fill="none" stroke="rgba(34,211,238,0.6)" stroke-width="1.4"/><circle cx="40" cy="40" r="6" fill="url(#g-v2c)"/><circle cx="40" cy="40" r="2.4" fill="#e7ebf3"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><circle cx="40" cy="40" r="30" fill="none" stroke="url(#g-v2c)" stroke-width="3"/><circle cx="40" cy="40" r="18" fill="none" stroke="#22d3ee" stroke-width="2.5"/><circle cx="40" cy="40" r="7" fill="#f472b6"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><circle cx="40" cy="40" r="30" fill="none" stroke="url(#g-v2c)" stroke-width="5"/><circle cx="40" cy="40" r="12" fill="#f472b6"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">Concentric pulse with a hot center — buoy meets signal. Pairs well with the live-status pill aesthetic already in the app. Animates naturally.</p>
+    </div>
+
+    <!-- 07 HEXAGON OS -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">07 · Platform</div>
+          <div class="card-name">Hex · OS</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <polygon points="40,8 66,22 66,52 40,66 14,52 14,22" fill="url(#g-sentinel)"/>
+          <polygon points="40,14 61,25 61,50 40,61 19,50 19,25" fill="#0b0f1a"/>
+          <polygon points="40,22 54,30 54,46 40,54 26,46 26,30" fill="none" stroke="url(#g-v2c)" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="40" cy="38" r="3" fill="#f472b6"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><polygon points="40,8 66,22 66,52 40,66 14,52 14,22" fill="url(#g-sentinel)"/><polygon points="40,14 61,25 61,50 40,61 19,50 19,25" fill="#0b0f1a"/><polygon points="40,22 54,30 54,46 40,54 26,46 26,30" fill="none" stroke="url(#g-v2c)" stroke-width="1.8" stroke-linejoin="round"/><circle cx="40" cy="38" r="3" fill="#f472b6"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><polygon points="40,8 66,22 66,52 40,66 14,52 14,22" fill="url(#g-sentinel)"/><polygon points="40,18 58,28 58,48 40,58 22,48 22,28" fill="#0b0f1a"/><circle cx="40" cy="38" r="6" fill="#f472b6"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><polygon points="40,8 66,22 66,52 40,66 14,52 14,22" fill="url(#g-sentinel)"/><circle cx="40" cy="38" r="14" fill="#0b0f1a"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">Hex as "platform" cue — the "OS" part of the name doing the talking. Nested hexes suggest layered detectors. Mechanical, good for enterprise reads.</p>
+    </div>
+
+    <!-- 08 BOW WAVE / CHEVRON -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">08 · Motion</div>
+          <div class="card-name">Bow · Wake</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <path d="M12 54 L40 22 L68 54" fill="none" stroke="url(#g-v2c)" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round"/>
+          <path d="M18 62 L40 38 L62 62" fill="none" stroke="#a78bfa" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" opacity="0.55"/>
+          <path d="M26 70 L40 54 L54 70" fill="none" stroke="#f472b6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.5"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><path d="M12 54 L40 22 L68 54" fill="none" stroke="url(#g-v2c)" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/><path d="M18 62 L40 38 L62 62" fill="none" stroke="#a78bfa" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" opacity="0.55"/><path d="M26 70 L40 54 L54 70" fill="none" stroke="#f472b6" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round" opacity="0.5"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><path d="M12 58 L40 22 L68 58" fill="none" stroke="url(#g-v2c)" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/><path d="M22 68 L40 46 L58 68" fill="none" stroke="#f472b6" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><path d="M10 60 L40 18 L70 60" fill="none" stroke="url(#g-v2c)" stroke-width="10" stroke-linejoin="round" stroke-linecap="round"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">Stacked chevrons — a bow cutting water, or an escalation. Feels kinetic. Aligns with the "decide in seconds" energy of the hero copy.</p>
+    </div>
+
+    <!-- 09 DOT CONSTELLATION -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">09 · Fleet</div>
+          <div class="card-name">Constellation</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <line x1="20" y1="28" x2="40" y2="44" stroke="rgba(167,139,250,0.3)" stroke-width="1"/>
+          <line x1="40" y1="44" x2="60" y2="22" stroke="rgba(34,211,238,0.3)" stroke-width="1"/>
+          <line x1="40" y1="44" x2="56" y2="60" stroke="rgba(244,114,182,0.3)" stroke-width="1"/>
+          <line x1="40" y1="44" x2="22" y2="58" stroke="rgba(167,139,250,0.3)" stroke-width="1"/>
+          <circle cx="20" cy="28" r="3.5" fill="#a78bfa"/>
+          <circle cx="60" cy="22" r="3" fill="#22d3ee"/>
+          <circle cx="56" cy="60" r="2.5" fill="#f472b6"/>
+          <circle cx="22" cy="58" r="2.5" fill="#22d3ee" opacity="0.8"/>
+          <circle cx="40" cy="44" r="5" fill="url(#g-v2c)"/>
+          <circle cx="40" cy="44" r="8" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><line x1="20" y1="28" x2="40" y2="44" stroke="rgba(167,139,250,0.4)" stroke-width="1.4"/><line x1="40" y1="44" x2="60" y2="22" stroke="rgba(34,211,238,0.4)" stroke-width="1.4"/><line x1="40" y1="44" x2="56" y2="60" stroke="rgba(244,114,182,0.4)" stroke-width="1.4"/><circle cx="20" cy="28" r="4" fill="#a78bfa"/><circle cx="60" cy="22" r="3.5" fill="#22d3ee"/><circle cx="56" cy="60" r="3" fill="#f472b6"/><circle cx="40" cy="44" r="6" fill="url(#g-v2c)"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><circle cx="20" cy="28" r="7" fill="#a78bfa"/><circle cx="60" cy="22" r="6" fill="#22d3ee"/><circle cx="56" cy="60" r="5" fill="#f472b6"/><circle cx="40" cy="44" r="9" fill="url(#g-v2c)"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><circle cx="40" cy="40" r="14" fill="url(#g-sentinel)"/><circle cx="16" cy="20" r="8" fill="#a78bfa"/><circle cx="62" cy="62" r="8" fill="#f472b6"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">Four contacts triangulated around a hot center — the fleet as constellation. Closest visual echo of the live dashboard. Very memorable at large sizes.</p>
+    </div>
+
+    <!-- 10 BRACKETS -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">10 · Targeting</div>
+          <div class="card-name">Reticle · Brackets</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <path d="M18 14 L14 14 L14 26" fill="none" stroke="url(#g-v2c)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M62 14 L66 14 L66 26" fill="none" stroke="url(#g-v2c)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M18 66 L14 66 L14 54" fill="none" stroke="url(#g-v2c)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M62 66 L66 66 L66 54" fill="none" stroke="url(#g-v2c)" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="40" cy="40" r="10" fill="none" stroke="#f472b6" stroke-width="1.4"/>
+          <circle cx="40" cy="40" r="2.5" fill="#f472b6"/>
+          <line x1="40" y1="30" x2="40" y2="22" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+          <line x1="40" y1="50" x2="40" y2="58" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+          <line x1="30" y1="40" x2="22" y2="40" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+          <line x1="50" y1="40" x2="58" y2="40" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><path d="M18 14 L14 14 L14 26" fill="none" stroke="url(#g-v2c)" stroke-width="3.5" stroke-linecap="round"/><path d="M62 14 L66 14 L66 26" fill="none" stroke="url(#g-v2c)" stroke-width="3.5" stroke-linecap="round"/><path d="M18 66 L14 66 L14 54" fill="none" stroke="url(#g-v2c)" stroke-width="3.5" stroke-linecap="round"/><path d="M62 66 L66 66 L66 54" fill="none" stroke="url(#g-v2c)" stroke-width="3.5" stroke-linecap="round"/><circle cx="40" cy="40" r="8" fill="#f472b6"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><path d="M20 14 L14 14 L14 20" fill="none" stroke="url(#g-v2c)" stroke-width="5" stroke-linecap="round"/><path d="M60 14 L66 14 L66 20" fill="none" stroke="url(#g-v2c)" stroke-width="5" stroke-linecap="round"/><path d="M20 66 L14 66 L14 60" fill="none" stroke="url(#g-v2c)" stroke-width="5" stroke-linecap="round"/><path d="M60 66 L66 66 L66 60" fill="none" stroke="url(#g-v2c)" stroke-width="5" stroke-linecap="round"/><circle cx="40" cy="40" r="11" fill="#f472b6"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><path d="M24 10 L10 10 L10 24" fill="none" stroke="url(#g-v2c)" stroke-width="10" stroke-linecap="round"/><path d="M56 70 L70 70 L70 56" fill="none" stroke="url(#g-v2c)" stroke-width="10" stroke-linecap="round"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">Targeting brackets frame a pink contact. Defense-forward read — think Palmer Luckey, Anduril. Feels aggressive; be sure that matches the posture.</p>
+    </div>
+
+    <!-- 11 ANCHOR BIT -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">11 · Heritage</div>
+          <div class="card-name">Anchor · Bit</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <circle cx="40" cy="20" r="6" fill="none" stroke="url(#g-v2c)" stroke-width="2.2"/>
+          <line x1="40" y1="26" x2="40" y2="56" stroke="url(#g-v2c)" stroke-width="2.4" stroke-linecap="round"/>
+          <line x1="30" y1="38" x2="50" y2="38" stroke="url(#g-v2c)" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M22 52 Q 22 62 32 62 L 48 62 Q 58 62 58 52" fill="none" stroke="url(#g-v2c)" stroke-width="2.4" stroke-linecap="round"/>
+          <circle cx="40" cy="56" r="2" fill="#f472b6"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><circle cx="40" cy="20" r="6" fill="none" stroke="url(#g-v2c)" stroke-width="3"/><line x1="40" y1="26" x2="40" y2="56" stroke="url(#g-v2c)" stroke-width="3" stroke-linecap="round"/><line x1="30" y1="38" x2="50" y2="38" stroke="url(#g-v2c)" stroke-width="3" stroke-linecap="round"/><path d="M22 52 Q 22 62 32 62 L 48 62 Q 58 62 58 52" fill="none" stroke="url(#g-v2c)" stroke-width="3" stroke-linecap="round"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><circle cx="40" cy="20" r="8" fill="none" stroke="url(#g-v2c)" stroke-width="5"/><line x1="40" y1="28" x2="40" y2="58" stroke="url(#g-v2c)" stroke-width="5" stroke-linecap="round"/><line x1="28" y1="40" x2="52" y2="40" stroke="url(#g-v2c)" stroke-width="5" stroke-linecap="round"/><path d="M20 52 Q 20 64 32 64 L 48 64 Q 60 64 60 52" fill="none" stroke="url(#g-v2c)" stroke-width="5" stroke-linecap="round"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><circle cx="40" cy="18" r="10" fill="none" stroke="url(#g-v2c)" stroke-width="8"/><rect x="34" y="28" width="12" height="34" fill="url(#g-v2c)"/><path d="M14 48 Q 14 66 32 66 L 48 66 Q 66 66 66 48" fill="none" stroke="url(#g-v2c)" stroke-width="8" stroke-linecap="round"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">The obvious one. Skeletal anchor in a gradient stroke. Reads maritime instantly but also reads "shipping company." Consider only if you want heritage over defense.</p>
+    </div>
+
+    <!-- 12 LIGHTHOUSE BEAM -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-num">12 · Watchtower</div>
+          <div class="card-name">Lighthouse · Beam</div>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-label">dark</span>
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <path d="M40 10 L64 58 L16 58 Z" fill="url(#g-v2c)" opacity="0.18"/>
+          <path d="M40 10 L52 58 L28 58 Z" fill="url(#g-v2c)" opacity="0.5"/>
+          <circle cx="40" cy="10" r="5" fill="#f472b6"/>
+          <circle cx="40" cy="10" r="9" fill="none" stroke="#f472b6" stroke-width="1" opacity="0.5"/>
+          <rect x="14" y="60" width="52" height="3" rx="1.5" fill="url(#g-v2c)"/>
+        </svg>
+      </div>
+      <div class="stage">
+        <span class="stage-label">lockup</span>
+        <div class="lockup">
+          <svg width="28" height="28" viewBox="0 0 80 80"><path d="M40 10 L64 58 L16 58 Z" fill="url(#g-v2c)" opacity="0.22"/><path d="M40 10 L52 58 L28 58 Z" fill="url(#g-v2c)" opacity="0.6"/><circle cx="40" cy="10" r="6" fill="#f472b6"/><rect x="14" y="60" width="52" height="4" rx="2" fill="url(#g-v2c)"/></svg>
+          <span class="wordmark">HarborOS</span>
+        </div>
+      </div>
+      <div class="small-row">
+        <div><svg width="24" height="24" viewBox="0 0 80 80"><path d="M40 8 L56 58 L24 58 Z" fill="url(#g-v2c)"/><circle cx="40" cy="8" r="8" fill="#f472b6"/><rect x="14" y="60" width="52" height="5" rx="2" fill="url(#g-v2c)"/></svg><small>24</small></div>
+        <div><svg width="16" height="16" viewBox="0 0 80 80"><path d="M40 4 L60 64 L20 64 Z" fill="url(#g-v2c)"/><circle cx="40" cy="8" r="12" fill="#f472b6"/></svg><small>16</small></div>
+      </div>
+      <p class="card-rationale">Beam cone with a point source. "Watchtower" positioning — the harbor watches for you. Warm and protective rather than militant. Plays off "sentinel" in the codebase.</p>
+    </div>
+
+  </div>
+
+  <div class="section-head">
+    <h3>Shortlist · recommendation</h3>
+    <span class="mono">pick</span>
+  </div>
+
+  <div class="card" style="padding:28px">
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.18);border-radius:10px">
+          <svg width="32" height="32" viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/><circle cx="40" cy="40" r="24" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/><path d="M40 40 L40 6 A34 34 0 0 1 70 52 Z" fill="url(#g-v2c)" opacity="0.55"/><line x1="40" y1="40" x2="40" y2="6" stroke="#22d3ee" stroke-width="2" stroke-linecap="round"/><circle cx="56" cy="28" r="2.5" fill="#f472b6"/></svg>
+          <div>
+            <div style="font-weight:600;font-size:13px">03 · Radar Sweep</div>
+            <div class="mono" style="font-size:10px;color:var(--xdim);letter-spacing:0.14em;text-transform:uppercase;margin-top:2px">Top pick</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(34,211,238,0.04);border:1px solid rgba(34,211,238,0.14);border-radius:10px">
+          <svg width="32" height="32" viewBox="0 0 80 80"><line x1="20" y1="28" x2="40" y2="44" stroke="rgba(167,139,250,0.4)" stroke-width="1.4"/><line x1="40" y1="44" x2="60" y2="22" stroke="rgba(34,211,238,0.4)" stroke-width="1.4"/><line x1="40" y1="44" x2="56" y2="60" stroke="rgba(244,114,182,0.4)" stroke-width="1.4"/><circle cx="20" cy="28" r="4" fill="#a78bfa"/><circle cx="60" cy="22" r="3.5" fill="#22d3ee"/><circle cx="56" cy="60" r="3" fill="#f472b6"/><circle cx="40" cy="44" r="6" fill="url(#g-v2c)"/></svg>
+          <div>
+            <div style="font-weight:600;font-size:13px">09 · Constellation</div>
+            <div class="mono" style="font-size:10px;color:var(--xdim);letter-spacing:0.14em;text-transform:uppercase;margin-top:2px">Runner-up</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(244,114,182,0.04);border:1px solid rgba(244,114,182,0.14);border-radius:10px">
+          <svg width="32" height="32" viewBox="0 0 80 80"><circle cx="40" cy="40" r="28" fill="url(#g-pulse)" /><circle cx="40" cy="40" r="22" fill="none" stroke="rgba(167,139,250,0.35)" stroke-width="1"/><circle cx="40" cy="40" r="14" fill="none" stroke="rgba(34,211,238,0.6)" stroke-width="1.4"/><circle cx="40" cy="40" r="6" fill="url(#g-v2c)"/></svg>
+          <div>
+            <div style="font-weight:600;font-size:13px">06 · Pulse</div>
+            <div class="mono" style="font-size:10px;color:var(--xdim);letter-spacing:0.14em;text-transform:uppercase;margin-top:2px">Safe</div>
+          </div>
+        </div>
+      </div>
+      <div style="color:var(--dim);font-size:13.5px;line-height:1.7">
+        <p style="margin:0 0 12px"><strong style="color:var(--fg)">Pick 03 (Radar Sweep)</strong> if you want the logo to state the product's job: continuous watch across contested water. The quarter-sweep reads on a billboard and on a favicon; the single pink contact gives you a natural accent to animate.</p>
+        <p style="margin:0 0 12px"><strong style="color:var(--fg)">Pick 09 (Constellation)</strong> if you want the identity to echo the dashboard itself — contacts on a field, tracked from the center. Most memorable at large sizes; weakest at 16px.</p>
+        <p style="margin:0"><strong style="color:var(--fg)">Pick 06 (Pulse)</strong> if you want a safe, adaptable mark that plays nicely next to any wordmark and doubles as a loading state. Less narrative but bulletproof.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <h3>Next steps</h3>
+    <span class="mono">after pick</span>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="card-num">A</div>
+      <div class="card-name">Lock the geometry</div>
+      <p class="card-rationale">Rebuild the chosen mark on a clean grid. Verify optical centering, corner radii, stroke weights at 16 / 24 / 32 / 64 / 128.</p>
+    </div>
+    <div class="card">
+      <div class="card-num">B</div>
+      <div class="card-name">Wordmark lockup rules</div>
+      <p class="card-rationale">Set minimum clear-space, vertical/horizontal lockups, and a type-only variant for extreme small sizes (menubar, notifications).</p>
+    </div>
+    <div class="card">
+      <div class="card-num">C</div>
+      <div class="card-name">Motion spec</div>
+      <p class="card-rationale">Define an idle state and an "active" state for the mark — the launch animation in the app is the first surface that will use it.</p>
+    </div>
+    <div class="card">
+      <div class="card-num">D</div>
+      <div class="card-name">Export kit</div>
+      <p class="card-rationale">SVG (mono + gradient), PNG 16/32/48/192/512, Apple touch icon 180, favicon .ico, OG image 1200×630.</p>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

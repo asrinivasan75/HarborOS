@@ -9,7 +9,7 @@ export default function ProductPage() {
       <PageHero
         eyebrow="The console · v2.4"
         title="The operations console"
-        gradient="built for the bridge."
+        gradient="made for the 3 AM call."
         body="One surface for every AIS track, satellite pass, and behavioral signal. Triage in seconds, verify in hours, report in a single click."
         secondaryHref="#workflow"
         secondaryLabel="See the workflow"
@@ -31,7 +31,11 @@ export default function ProductPage() {
 
       <section id="workflow" className="max-w-[1100px] mx-auto px-8 pb-16">
         <Reveal>
-          <SectionLabel>The loop</SectionLabel>
+          <div className="flex items-baseline gap-3 mb-4">
+            <span className="font-mono text-[13px] tabular-nums text-violet-300">01</span>
+            <span className="w-6 h-px bg-white/[0.12]" />
+            <span className="text-[13px] text-slate-300 font-medium tracking-tight">The loop</span>
+          </div>
           <h2 className="text-[30px] font-semibold tracking-[-0.02em] leading-[1.15] mb-10">
             Ingest · detect · verify · report.
           </h2>

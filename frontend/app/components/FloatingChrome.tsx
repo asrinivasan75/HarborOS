@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import Link from "next/link";
 import type { Region } from "@/app/lib/api";
+import Logomark from "@/app/components/Logomark";
+import ReturnHome from "@/app/components/ReturnHome";
 
 interface FloatingChromeProps {
   regions: Record<string, Region>;
@@ -63,16 +64,11 @@ export default function FloatingChrome({
 
   return (
     <div className="absolute top-3 left-3 right-3 z-30 flex items-center gap-2 pointer-events-none">
-      {/* Logo pill */}
-      <Link
-        href="/"
-        className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-[rgba(18,22,36,0.82)] backdrop-blur-xl border border-white/[0.14] hover:bg-[rgba(18,22,36,0.9)] transition-colors"
-      >
-        <div className="relative w-5 h-5 rounded-md bg-gradient-to-br from-violet-400 to-cyan-400">
-          <div className="absolute inset-[1.5px] rounded-[4px] bg-gradient-to-br from-[#1a1230] to-[#0d1a2a]" />
-        </div>
+      {/* Logo pill — returns to landing with exit animation */}
+      <ReturnHome className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-[rgba(18,22,36,0.82)] backdrop-blur-xl border border-white/[0.14] hover:bg-[rgba(18,22,36,0.9)] hover:border-white/[0.22] transition-colors text-slate-200">
+        <Logomark size={18} animate />
         <span className="text-[13px] font-semibold tracking-tight text-slate-100">HarborOS</span>
-      </Link>
+      </ReturnHome>
 
       {/* Sector pill */}
       <div ref={regionMenuRef} className="pointer-events-auto relative">

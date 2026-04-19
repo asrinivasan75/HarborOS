@@ -383,10 +383,10 @@ function Dashboard() {
         onOpenCommandPalette={() => setCommandOpen(true)}
       />
 
-      {/* Ingest banner — shows when vessel count is low */}
+      {/* Ingest banner */}
       <IngestBanner
         vesselCount={vessels.length}
-        positionsIngested={ingestionStatus?.positions_ingested}
+        status={ingestionStatus}
         isLive={!!isLive}
         connectionOk={connectionOk}
       />

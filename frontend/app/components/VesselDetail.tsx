@@ -414,7 +414,7 @@ export default function VesselDetailPanel({
   if (showReport && exportReport) {
     return (
       <div
-        className="w-[360px] bg-[#0d1320] border-l border-[#1a2235] flex flex-col shrink-0 overflow-y-auto shadow-2xl shadow-black/50"
+        className="absolute top-16 bottom-4 right-3 w-[380px] z-40 rounded-2xl bg-[rgba(14,18,32,0.92)] backdrop-blur-xl border border-white/[0.14] flex flex-col overflow-y-auto shadow-[0_20px_60px_rgba(0,0,0,0.55)] scroll-thin"
         style={{ animation: closing ? "slide-out-right 0.2s ease-in forwards" : "slide-in-right 0.25s ease-out" }}
       >
         <ReportView report={exportReport} onBack={() => setShowReport(false)} />
@@ -425,7 +425,7 @@ export default function VesselDetailPanel({
   return (
     <div
       data-tour="vessel-detail"
-      className="w-[360px] bg-[#0d1320] border-l border-[#1a2235] flex flex-col shrink-0 overflow-y-auto shadow-2xl shadow-black/50"
+      className="absolute top-16 bottom-4 right-3 w-[380px] z-40 rounded-2xl bg-[rgba(14,18,32,0.92)] backdrop-blur-xl border border-white/[0.14] flex flex-col overflow-y-auto shadow-[0_20px_60px_rgba(0,0,0,0.55)] scroll-thin"
       style={{ animation: closing ? "slide-out-right 0.2s ease-in forwards" : "slide-in-right 0.25s ease-out" }}
     >
       {/* Header */}
@@ -1076,25 +1076,25 @@ function ReportView({ report, onBack }: { report: Record<string, unknown>; onBac
   return (
     <>
       {/* Report Header */}
-      <div className="px-4 py-3 border-b border-[#1a2235] flex items-center">
+      <div className="px-4 py-3 border-b border-white/[0.08] flex items-center gap-3">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-blue-400 transition-colors uppercase tracking-wider font-medium shrink-0"
+          className="flex items-center gap-1.5 text-[10px] text-slate-400 hover:text-slate-100 transition-colors uppercase tracking-[0.14em] font-medium shrink-0"
         >
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
           Back
         </button>
-        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex-1 text-center">More Info</span>
+        <span className="text-[10px] font-mono font-semibold text-slate-500 uppercase tracking-[0.18em] flex-1 text-center">Incident Report</span>
         <button
           onClick={() => {
             const v = report.vessel as Record<string, unknown> | undefined;
             if (v?.id) window.open(`/report?vesselId=${v.id}`, "_blank");
           }}
-          className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-blue-400 transition-colors uppercase tracking-wider font-medium shrink-0"
+          className="flex items-center gap-1.5 text-[10px] text-slate-400 hover:text-violet-300 transition-colors uppercase tracking-[0.14em] font-medium shrink-0"
         >
-          Export
+          Open
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
             <polyline points="15 3 21 3 21 9" />
@@ -1107,26 +1107,26 @@ function ReportView({ report, onBack }: { report: Record<string, unknown>; onBac
       <div className="px-4 py-4 space-y-4">
         {/* Position Trail */}
         {trail?.length > 0 && (
-          <Section title={`Position Trail (${trail.length} points)`}>
-            <div className="bg-[#111827] rounded-lg border border-[#1a2235] overflow-hidden">
-              <div className="grid grid-cols-5 gap-px bg-[#1a2235] text-[9px] text-slate-500 uppercase tracking-wider font-medium">
-                <div className="bg-[#0d1320] px-2 py-1.5">Time</div>
-                <div className="bg-[#0d1320] px-2 py-1.5">Lat</div>
-                <div className="bg-[#0d1320] px-2 py-1.5">Lon</div>
-                <div className="bg-[#0d1320] px-2 py-1.5">Speed</div>
-                <div className="bg-[#0d1320] px-2 py-1.5">Course</div>
+          <Section title={`Position Trail · ${trail.length} points`}>
+            <div className="rounded-lg border border-white/[0.06] bg-white/[0.015] overflow-hidden">
+              <div className="grid grid-cols-5 text-[9px] font-mono font-semibold text-slate-500 uppercase tracking-[0.14em] border-b border-white/[0.06]">
+                <div className="px-2 py-1.5">Time</div>
+                <div className="px-2 py-1.5">Lat</div>
+                <div className="px-2 py-1.5">Lon</div>
+                <div className="px-2 py-1.5">Speed</div>
+                <div className="px-2 py-1.5">Course</div>
               </div>
               {trail.slice(0, 20).map((p, i) => (
-                <div key={i} className="grid grid-cols-5 gap-px bg-[#1a2235] text-[10px] font-mono text-slate-400">
-                  <div className="bg-[#0d1320] px-2 py-1">{new Date(String(p.timestamp)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
-                  <div className="bg-[#0d1320] px-2 py-1">{Number(p.latitude).toFixed(4)}</div>
-                  <div className="bg-[#0d1320] px-2 py-1">{Number(p.longitude).toFixed(4)}</div>
-                  <div className="bg-[#0d1320] px-2 py-1">{p.speed_over_ground != null ? Number(p.speed_over_ground).toFixed(1) : "—"}</div>
-                  <div className="bg-[#0d1320] px-2 py-1">{p.course_over_ground != null ? `${Number(p.course_over_ground).toFixed(0)}°` : "—"}</div>
+                <div key={i} className="grid grid-cols-5 text-[10px] font-mono tabular-nums text-slate-400 border-t border-white/[0.04] first:border-t-0">
+                  <div className="px-2 py-1">{new Date(String(p.timestamp)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                  <div className="px-2 py-1">{Number(p.latitude).toFixed(4)}</div>
+                  <div className="px-2 py-1">{Number(p.longitude).toFixed(4)}</div>
+                  <div className="px-2 py-1">{p.speed_over_ground != null ? Number(p.speed_over_ground).toFixed(1) : "—"}</div>
+                  <div className="px-2 py-1">{p.course_over_ground != null ? `${Number(p.course_over_ground).toFixed(0)}°` : "—"}</div>
                 </div>
               ))}
               {trail.length > 20 && (
-                <div className="text-center text-[9px] text-slate-600 py-1.5 bg-[#0d1320]">... {trail.length - 20} more</div>
+                <div className="text-center text-[9px] font-mono text-slate-600 py-1.5 border-t border-white/[0.04]">… {trail.length - 20} more</div>
               )}
             </div>
           </Section>
@@ -1135,11 +1135,14 @@ function ReportView({ report, onBack }: { report: Record<string, unknown>; onBac
         {/* Audit Trail */}
         {audit?.length > 0 && (
           <Section title="Audit Trail">
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {audit.map((e, i) => (
-                <div key={i} className="flex items-start gap-2 text-[10px]">
-                  <span className="text-slate-600 font-mono shrink-0">{new Date(String(e.timestamp)).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                  <span className="text-slate-400">{String(e.action)}{e.details ? `: ${String(e.details)}` : ""}</span>
+                <div key={i} className="flex items-start gap-2 text-[10.5px] py-1 border-t border-white/[0.04] first:border-t-0 first:pt-0">
+                  <span className="text-slate-600 font-mono shrink-0 tabular-nums">{new Date(String(e.timestamp)).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                  <span className="text-slate-300">
+                    <span className="font-semibold text-slate-200">{String(e.action)}</span>
+                    {e.details ? <span className="text-slate-500"> · {String(e.details)}</span> : null}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1149,13 +1152,13 @@ function ReportView({ report, onBack }: { report: Record<string, unknown>; onBac
         {/* Notes */}
         {notes && (
           <Section title="Operator Notes">
-            <p className="text-[11px] text-slate-400 leading-relaxed">{notes}</p>
+            <p className="text-[11.5px] text-slate-300 leading-[1.6]">{notes}</p>
           </Section>
         )}
 
         {/* Footer */}
-        <div className="text-center text-[9px] text-slate-700 pt-2 pb-4 border-t border-[#1a2235]">
-          HarborOS Incident Report · Maritime Awareness Platform · CONFIDENTIAL
+        <div className="text-center text-[9px] font-mono tracking-[0.18em] uppercase text-slate-600 pt-3 pb-2 border-t border-white/[0.06]">
+          HarborOS · Confidential
         </div>
       </div>
     </>
@@ -1165,7 +1168,7 @@ function ReportView({ report, onBack }: { report: Record<string, unknown>; onBac
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">{title}</h3>
+      <h3 className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.18em] mb-2.5">{title}</h3>
       {children}
     </div>
   );

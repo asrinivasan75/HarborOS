@@ -275,6 +275,7 @@ export default function MapView({
   const showMarkers = zoomLevel >= HEATMAP_ZOOM_THRESHOLD;
   const centerChangeRef = useRef(onMapCenterChange);
   const mapClickRef = useRef(onMapClick);
+  const onSelectVesselRef = useRef(onSelectVessel);
   const satelliteStyleKey = satelliteTiles
     ? `${satelliteTiles.tile_url}:${satelliteTiles.tile_size}:${satelliteTiles.max_zoom}:${satelliteTiles.sentinel2_available}`
     : "fallback";
@@ -282,7 +283,8 @@ export default function MapView({
   useEffect(() => {
     centerChangeRef.current = onMapCenterChange;
     mapClickRef.current = onMapClick;
-  }, [onMapCenterChange, onMapClick]);
+    onSelectVesselRef.current = onSelectVessel;
+  }, [onMapCenterChange, onMapClick, onSelectVessel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -401,10 +403,13 @@ export default function MapView({
       if (!markerData) {
         const el = document.createElement("div");
         el.style.cursor = "pointer";
+        el.style.pointerEvents = "auto";
+        el.setAttribute("data-vessel-id", vessel.id);
 
         el.addEventListener("click", (e) => {
           e.stopPropagation();
-          onSelectVessel(vessel.id);
+          const vid = el.getAttribute("data-vessel-id");
+          if (vid) onSelectVesselRef.current(vid);
         });
 
         const marker = new maplibregl.Marker({ element: el })
@@ -443,7 +448,7 @@ export default function MapView({
         delete markersRef.current[vesselId];
       }
     });
-  }, [vessels, selectedVesselId, onSelectVessel, hideNormal, showMarkers, updateHeatmap]);
+  }, [vessels, selectedVesselId, hideNormal, showMarkers, updateHeatmap]);
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;

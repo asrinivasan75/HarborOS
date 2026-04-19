@@ -188,18 +188,66 @@ HarborOS/
 └── start.sh                       # Run both servers
 ```
 
-## Copernicus Setup (Optional)
+## API Keys & External Services
 
-Real Sentinel-2 satellite imagery requires Copernicus Data Space credentials. Without them, HarborOS falls back to simulated imagery.
+HarborOS ships runnable out of the box — seeded demo data, simulated satellite imagery, and a static scenario. To plug it into live data sources, set the following environment variables before starting the backend.
 
-1. Register at [dataspace.copernicus.eu](https://dataspace.copernicus.eu)
-2. Create an OAuth client in account settings
-3. Set env vars before starting the backend:
+| Variable | Purpose | Required? | Source |
+|----------|---------|-----------|--------|
+| `AISSTREAM_API_KEY` | Live AIS vessel tracks across nine sectors | Recommended | [aisstream.io](https://aisstream.io/) |
+| `CDSE_CLIENT_ID` | Real Sentinel-2 optical imagery (verification overlays) | Optional | [dataspace.copernicus.eu](https://dataspace.copernicus.eu) |
+| `CDSE_CLIENT_SECRET` | Paired secret for Copernicus OAuth | Optional | (same) |
+| `HARBOROS_DB` | Custom SQLite path | Optional | Defaults to `./harboros.db` |
+
+US National Weather Service (NWS) is used for wind/visibility context and requires no key. If the feed is unreachable the vessel panel silently drops the weather row.
+
+### 1. AISStream — live vessel traffic (recommended)
+
+Without this, the map shows seeded demo vessels only. With it, real-time AIS tracks stream into all nine sectors.
+
+1. Sign up at [aisstream.io](https://aisstream.io/) — free tier works for development.
+2. Copy the API key from the dashboard.
+3. Export before starting the backend:
+
+```bash
+export AISSTREAM_API_KEY="your_aisstream_key"
+```
+
+The ingest banner on the dashboard shows `CONNECTED · AISSTREAM` once the handshake succeeds. Expect vessels to populate over a minute or two as they broadcast.
+
+### 2. Copernicus Sentinel-2 — real satellite imagery (optional)
+
+Without this, the **Verify** action on a vessel returns simulated imagery marked `simulated` in the panel. With it, the verification fetches the latest real Sentinel-2 scene for the vessel's location and overlays it on the map.
+
+1. Register at [dataspace.copernicus.eu](https://dataspace.copernicus.eu) — free, no wait.
+2. Go to **User Settings → OAuth clients → Create client**. Name it (e.g. `harboros-dev`).
+3. Copy the generated `client_id` and `client_secret`.
+4. Export before starting the backend:
 
 ```bash
 export CDSE_CLIENT_ID="your_client_id"
 export CDSE_CLIENT_SECRET="your_client_secret"
 ```
+
+When configured, the Satellite Imagery chip in the vessel panel flips from `simulated` to `real` and tiles render at 10m resolution.
+
+### 3. Putting it all together
+
+Drop the exports into a `.env` file in `backend/` and source it, or add them to your shell profile:
+
+```bash
+# backend/.env
+AISSTREAM_API_KEY=your_aisstream_key
+CDSE_CLIENT_ID=your_client_id
+CDSE_CLIENT_SECRET=your_client_secret
+```
+
+```bash
+set -a && source backend/.env && set +a
+./start.sh
+```
+
+Nothing here is required to run the demo — HarborOS is fully functional without any keys, it just operates on seeded data and simulated imagery.
 
 ## References
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Logomark from "@/app/components/Logomark";
 
 interface LaunchButtonProps {
   className?: string;
@@ -82,11 +83,8 @@ function LaunchOverlay({ onDone }: { onDone: () => void }) {
       <div className="relative w-[min(460px,88vw)] rounded-2xl border border-white/[0.12] bg-[rgba(18,22,36,0.72)] backdrop-blur-2xl p-8 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
         {/* Logo */}
         <div className="flex items-center gap-3 mb-6">
-          <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-violet-400 to-cyan-400 flex items-center justify-center launch-logo-glow">
-            <div className="absolute inset-[2px] rounded-[10px] bg-gradient-to-br from-[#1a1230] to-[#0d1a2a]" />
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" className="relative z-10 text-white">
-              <path d="M12 2L3 7v10l9 5 9-5V7l-9-5z" />
-            </svg>
+          <div className="w-11 h-11 rounded-xl border border-white/[0.1] bg-white/[0.02] flex items-center justify-center launch-logo-glow text-slate-300">
+            <Logomark size={28} animate />
           </div>
           <div>
             <div className="text-[15px] font-semibold tracking-tight">HarborOS</div>

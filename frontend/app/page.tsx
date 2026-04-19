@@ -152,43 +152,102 @@ function Signal({ name, w }: { name: string; w: number }) {
 }
 
 function Features() {
-  const feats = [
-    {
-      color: "#a78bfa",
-      title: "Global AIS ingest",
-      body: "14,287 vessels streamed. 9 sectors. 24/7.",
-      icon: (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>),
-    },
-    {
-      color: "#22d3ee",
-      title: "11 behavioral detectors",
-      body: "Dark transit, spoofing, loitering, rendezvous, manifest.",
-      icon: (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>),
-    },
-    {
-      color: "#f472b6",
-      title: "Sentinel-2 fusion",
-      body: "10m optical. Verify any contact in one click.",
-      icon: (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>),
-    },
-    {
-      color: "#4ade80",
-      title: "Exportable reports",
-      body: "PDF briefs. Interagency-ready. Signed.",
-      icon: (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>),
-    },
+  const detectors = [
+    { name: "Dark transit", w: 96 },
+    { name: "AIS spoofing", w: 88 },
+    { name: "Geofence breach", w: 80 },
+    { name: "Loitering", w: 72 },
+    { name: "Rendezvous", w: 64 },
+    { name: "Route deviation", w: 54 },
+    { name: "Speed anomaly", w: 46 },
+    { name: "Heading anomaly", w: 40 },
   ];
+
   return (
-    <section className="max-w-[1400px] mx-auto px-8 grid grid-cols-2 lg:grid-cols-4 gap-3">
-      {feats.map((f) => (
-        <div key={f.title} className="glass rounded-xl p-5 hover:border-white/[0.12] transition-colors">
-          <div className="w-8 h-8 rounded-lg mb-3.5 border border-white/[0.08] bg-white/[0.02] flex items-center justify-center" style={{ color: f.color }}>
-            {f.icon}
-          </div>
-          <h4 className="text-[13px] font-semibold mb-1 text-slate-100">{f.title}</h4>
-          <p className="text-[12px] text-slate-500 leading-[1.5]">{f.body}</p>
+    <section className="max-w-[1400px] mx-auto px-8">
+      {/* Inline counter strip */}
+      <div className="flex items-center flex-wrap gap-x-8 gap-y-3 py-5 px-6 rounded-xl border border-white/[0.06] bg-white/[0.015] mb-3">
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-[10px] tracking-[0.16em] text-slate-500 uppercase">Detectors</span>
+          <span className="font-mono text-[17px] font-semibold tabular-nums">11</span>
         </div>
-      ))}
+        <span className="w-px h-5 bg-white/[0.08]" />
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-[10px] tracking-[0.16em] text-slate-500 uppercase">Sectors</span>
+          <span className="font-mono text-[17px] font-semibold tabular-nums">9</span>
+        </div>
+        <span className="w-px h-5 bg-white/[0.08]" />
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-[10px] tracking-[0.16em] text-slate-500 uppercase">Vessels · 24h</span>
+          <span className="font-mono text-[17px] font-semibold tabular-nums">14,287</span>
+        </div>
+        <span className="w-px h-5 bg-white/[0.08]" />
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-[10px] tracking-[0.16em] text-slate-500 uppercase">Ingest latency</span>
+          <span className="font-mono text-[17px] font-semibold tabular-nums">1.4s</span>
+        </div>
+        <span className="w-px h-5 bg-white/[0.08]" />
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-[10px] tracking-[0.16em] text-slate-500 uppercase">Satellites</span>
+          <span className="font-mono text-[17px] font-semibold tabular-nums">Sentinel-2</span>
+        </div>
+      </div>
+
+      {/* Asymmetric spotlight — detectors on left, two stacked cards on right */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-3">
+        {/* Left: detector signal panel */}
+        <div className="glass rounded-xl p-6 relative overflow-hidden">
+          <div aria-hidden className="absolute top-0 right-0 w-64 h-64 bg-violet-500/[0.04] rounded-full blur-3xl -translate-y-20 translate-x-20" />
+          <div className="relative">
+            <div className="flex items-baseline justify-between mb-5">
+              <div>
+                <div className="text-[10.5px] font-mono tracking-[0.18em] text-slate-500 uppercase mb-1">Behavioral detectors</div>
+                <h3 className="text-[20px] font-semibold tracking-[-0.01em]">Eleven signals, running continuously.</h3>
+              </div>
+              <div className="font-mono text-[10.5px] text-slate-500 tracking-[0.12em] uppercase hidden md:block">Live signal</div>
+            </div>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+              {detectors.map((d) => (
+                <div key={d.name} className="flex items-center gap-3 py-1.5 border-t border-white/[0.04] first:border-t-0">
+                  <span className="text-[12px] text-slate-300 flex-1 truncate">{d.name}</span>
+                  <div className="w-[80px] h-[3px] bg-white/[0.05] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-400/70 to-cyan-400/70"
+                      style={{ width: `${d.w}%` }}
+                    />
+                  </div>
+                  <span className="font-mono text-[10.5px] text-slate-500 tabular-nums w-6 text-right">{d.w}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: two stacked cards */}
+        <div className="flex flex-col gap-3">
+          <div className="glass rounded-xl p-5 flex-1 relative overflow-hidden">
+            <div aria-hidden className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/[0.05] rounded-full blur-2xl -translate-y-10 translate-x-10" />
+            <div className="relative">
+              <div className="w-9 h-9 rounded-lg mb-3 border border-cyan-400/25 bg-cyan-500/[0.06] flex items-center justify-center text-cyan-300">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></svg>
+              </div>
+              <h4 className="text-[14px] font-semibold mb-1 text-slate-100">Sentinel-2 fusion</h4>
+              <p className="text-[12.5px] text-slate-400 leading-[1.55]">10 m optical, live Copernicus catalog. Verify any contact on the map in one click.</p>
+            </div>
+          </div>
+
+          <div className="glass rounded-xl p-5 flex-1 relative overflow-hidden">
+            <div aria-hidden className="absolute top-0 right-0 w-32 h-32 bg-pink-500/[0.05] rounded-full blur-2xl -translate-y-10 translate-x-10" />
+            <div className="relative">
+              <div className="w-9 h-9 rounded-lg mb-3 border border-pink-400/25 bg-pink-500/[0.06] flex items-center justify-center text-pink-300">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h4" /></svg>
+              </div>
+              <h4 className="text-[14px] font-semibold mb-1 text-slate-100">Signed incident reports</h4>
+              <p className="text-[12.5px] text-slate-400 leading-[1.55]">PDF briefs with audit chain intact. Interagency-ready. Exported from the vessel panel.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

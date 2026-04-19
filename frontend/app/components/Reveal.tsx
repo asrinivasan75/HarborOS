@@ -29,7 +29,7 @@ export default function Reveal({ children, delay = 0, className = "", as = "div"
           }
         }
       },
-      { threshold: 0.12, rootMargin: "0px 0px -60px 0px" },
+      { threshold: 0.01, rootMargin: "0px 0px 80px 0px" },
     );
     io.observe(el);
     return () => io.disconnect();
