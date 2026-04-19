@@ -15,8 +15,19 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:2003"),
   title: "HarborOS — Maritime Intelligence Platform",
   description: "Live AIS, satellite fusion, and behavioral detection across nine contested waterways. Built for maritime operators.",
+  twitter: {
+    card: "summary_large_image",
+    title: "HarborOS — Maritime intelligence, for every horizon.",
+    description: "Live AIS, satellite fusion, and behavioral detection across nine contested waterways.",
+  },
+  openGraph: {
+    type: "website",
+    title: "HarborOS — Maritime intelligence, for every horizon.",
+    description: "Live AIS, satellite fusion, and behavioral detection across nine contested waterways.",
+  },
 };
 
 export default function RootLayout({

@@ -11,6 +11,7 @@ import FloatingChrome from "@/app/components/FloatingChrome";
 import AlertPeeks from "@/app/components/AlertPeeks";
 import CommandPalette from "@/app/components/CommandPalette";
 import IngestBanner from "@/app/components/IngestBanner";
+import ShortcutOverlay from "@/app/components/ShortcutOverlay";
 import type { ToastItem } from "@/app/components/Toast";
 import type { SatelliteOverlay } from "@/app/components/MapView";
 import { api } from "@/app/lib/api";
@@ -37,7 +38,6 @@ function Dashboard() {
   const [selectedVessel, setSelectedVessel] = useState<VesselDetail | null>(null);
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [ingestionStatus, setIngestionStatus] = useState<IngestionStatus | null>(null);
   const [mapTarget, setMapTarget] = useState<{ center: [number, number]; zoom: number; _t?: number } | null>(null);
   const [satelliteOverlay, setSatelliteOverlay] = useState<SatelliteOverlay | null>(null);
@@ -93,13 +93,15 @@ function Dashboard() {
         setGeofences(g);
         setRegions(r);
         setLoading(false);
+        setConnectionOk(true);
 
         try {
           const status = await api.getIngestionStatus();
           setIngestionStatus(status);
         } catch {}
       } catch {
-        setError("Failed to connect to HarborOS backend. Make sure the API is running on port 3003.");
+        // Don't nuke the UI — let the refresh loop retry. Show reconnecting pill instead.
+        setConnectionOk(false);
         setLoading(false);
       }
     }
@@ -335,24 +337,6 @@ function Dashboard() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="text-center max-w-sm glass rounded-2xl p-8">
-          <div className="w-12 h-12 rounded-2xl bg-red-400/10 border border-red-400/25 flex items-center justify-center mx-auto mb-4">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-red-300">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-          </div>
-          <p className="text-[15px] font-semibold text-slate-100 mb-2">Connection failed</p>
-          <p className="text-[13px] text-slate-400 leading-relaxed">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
   const isLive = ingestionStatus?.running && ingestionStatus?.connected;
   const activeCount = alerts.filter((a) => a.status === "active").length;
 
@@ -442,6 +426,22 @@ function Dashboard() {
           closing={detailClosing}
         />
       )}
+
+      {/* Inline reconnecting pill — non-destructive, keeps map visible */}
+      {!connectionOk && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+          <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-full bg-[rgba(18,22,36,0.92)] backdrop-blur-xl border border-amber-400/30 shadow-[0_12px_32px_rgba(0,0,0,0.5)]">
+            <span className="relative flex items-center justify-center w-2 h-2">
+              <span className="absolute w-2 h-2 rounded-full bg-amber-400/40" style={{ animation: "ring-pulse 1.6s infinite" }} />
+              <span className="relative w-1.5 h-1.5 rounded-full bg-amber-400" />
+            </span>
+            <span className="text-[12px] font-semibold text-amber-200">Reconnecting to backend…</span>
+            <span className="font-mono text-[10px] text-slate-500 tracking-[0.12em] uppercase">port 3003</span>
+          </div>
+        </div>
+      )}
+
+      <ShortcutOverlay />
 
       <Toast toasts={toasts} onDismiss={dismissToast} />
     </div>

@@ -295,6 +295,65 @@ body > *:not(.ambient-glow) {
 }
 .launch-logo-glow { animation: launch-logo-glow 1.6s ease-out infinite; }
 
+/* Focus rings — accessibility */
+*:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.6);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:focus-visible,
+a:focus-visible {
+  outline-offset: 3px;
+}
+.maplibregl-canvas:focus {
+  outline: none;
+}
+
+/* Print styles — incident report */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #0a0e1a !important;
+  }
+  .ambient-glow,
+  nav,
+  footer,
+  .btn-secondary,
+  .btn-primary {
+    display: none !important;
+  }
+  .glass,
+  .glass-strong {
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+  }
+  .text-slate-100,
+  .text-slate-200,
+  .text-slate-300 { color: #0a0e1a !important; }
+  .text-slate-400 { color: #3f4758 !important; }
+  .text-slate-500 { color: #64748b !important; }
+  .text-slate-600 { color: #94a3b8 !important; }
+  .gradient-text {
+    -webkit-text-fill-color: #0a0e1a !important;
+    color: #0a0e1a !important;
+    background: none !important;
+  }
+  .text-red-300 { color: #b91c1c !important; }
+  .text-amber-300 { color: #b45309 !important; }
+  .text-yellow-300 { color: #a16207 !important; }
+  .text-emerald-300 { color: #047857 !important; }
+  .text-violet-300 { color: #6d28d9 !important; }
+  .text-cyan-300 { color: #0e7490 !important; }
+  .border-white\/\[0\.06\],
+  .border-white\/\[0\.08\],
+  .border-white\/\[0\.14\] { border-color: rgba(0, 0, 0, 0.12) !important; }
+  h1, h2, h3, h4 { page-break-after: avoid; }
+}
+
 /* Scroll reveal */
 .reveal {
   opacity: 0;

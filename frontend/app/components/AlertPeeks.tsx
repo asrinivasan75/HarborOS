@@ -42,7 +42,20 @@ export default function AlertPeeks({ alerts, onSelectAlert, selectedAlertId }: A
     .filter((a) => a.status === "active" && !dismissed.has(a.id))
     .sort((a, b) => b.risk_score - a.risk_score);
 
-  if (activeSorted.length === 0) return null;
+  if (activeSorted.length === 0) {
+    return (
+      <div className="absolute bottom-4 left-4 z-20 pointer-events-none">
+        <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-[rgba(18,22,36,0.82)] backdrop-blur-xl border border-emerald-400/20 shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
+          <span className="relative flex items-center justify-center w-2 h-2">
+            <span className="absolute w-2 h-2 rounded-full bg-emerald-400/40" style={{ animation: "subtle-pulse 2.4s infinite" }} />
+            <span className="relative w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          </span>
+          <span className="text-[12.5px] font-semibold text-slate-200">No active alerts</span>
+          <span className="font-mono text-[10px] text-emerald-300 tracking-[0.14em] uppercase">Nominal</span>
+        </div>
+      </div>
+    );
+  }
 
   const visible = hovered ? activeSorted : activeSorted.slice(0, COLLAPSED);
   const hiddenCount = activeSorted.length - visible.length;

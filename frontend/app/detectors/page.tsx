@@ -27,7 +27,11 @@ export default function DetectorsPage() {
       <section className="max-w-[1100px] mx-auto px-8 pb-24">
         <Reveal>
         <div className="glass rounded-2xl p-8">
-          <div className="text-[10.5px] font-mono tracking-[0.22em] text-slate-500 uppercase mb-3">How they compose</div>
+          <div className="flex items-baseline gap-3 mb-4">
+            <span className="font-mono text-[13px] tabular-nums text-pink-300">03</span>
+            <span className="w-6 h-px bg-white/[0.12]" />
+            <span className="text-[13px] text-slate-300 font-medium tracking-tight">How they compose</span>
+          </div>
           <h3 className="text-[22px] font-semibold tracking-[-0.02em] mb-4 max-w-[680px]">
             Signals fuse into a single risk score per vessel.
           </h3>
