@@ -692,7 +692,12 @@ export default function MapView({
 
   return (
     <div className="absolute inset-0">
-      <div ref={mapContainer} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" }} />
+      <div
+        ref={mapContainer}
+        role="application"
+        aria-label={`Live vessel tracking map · ${vessels.length} vessel${vessels.length === 1 ? "" : "s"} in view. Use the alert queue or command palette (Cmd+K) for keyboard-accessible vessel selection.`}
+        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" }}
+      />
       {/* Base map toggle */}
       <div className="absolute bottom-4 right-4 bg-[#0d1320]/95 backdrop-blur-md border border-[#1a2235] rounded-xl overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-white/[0.03] flex">
         <button

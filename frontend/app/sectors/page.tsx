@@ -4,7 +4,7 @@ import Reveal from "@/app/components/Reveal";
 
 export default function SectorsPage() {
   return (
-    <main className="min-h-screen">
+    <main id="main" className="min-h-screen">
       <SiteNav active="Sectors" />
       <SectorsHero />
 
@@ -159,7 +159,7 @@ function SectorsHero() {
                 backgroundSize: "40px 40px",
               }} />
               {/* World silhouette — crude continent blobs */}
-              <svg className="absolute inset-0 w-full h-full" viewBox="0 0 1000 500" preserveAspectRatio="none">
+              <svg aria-hidden="true" className="absolute inset-0 w-full h-full" viewBox="0 0 1000 500" preserveAspectRatio="none">
                 <g fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.09)" strokeWidth="0.6">
                   {/* North America */}
                   <path d="M 60 120 Q 90 80 160 90 L 230 110 Q 260 150 245 200 L 205 245 Q 170 260 145 245 L 105 220 Q 70 180 60 120 Z" />

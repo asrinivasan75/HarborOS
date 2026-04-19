@@ -61,7 +61,7 @@ export default function ReportPage() {
 
 function LoadingState() {
   return (
-    <main className="min-h-screen">
+    <main id="main" className="min-h-screen">
       <SiteNav />
       <div className="max-w-[1100px] mx-auto px-8 py-20 text-slate-500 text-[14px]">Loading report…</div>
     </main>
@@ -70,7 +70,7 @@ function LoadingState() {
 
 function ErrorState({ message }: { message: string }) {
   return (
-    <main className="min-h-screen">
+    <main id="main" className="min-h-screen">
       <SiteNav />
       <div className="max-w-[1100px] mx-auto px-8 py-20">
         <div className="glass rounded-2xl p-8 border border-red-400/20 bg-red-500/[0.04]">
@@ -111,7 +111,7 @@ function ReportContent() {
   const actionText = String(risk.recommended_action ?? "normal").toUpperCase();
 
   return (
-    <main className="min-h-screen">
+    <main id="main" className="min-h-screen">
       <SiteNav />
 
       <div className="max-w-[1100px] mx-auto px-8 pt-10 pb-24">
@@ -134,7 +134,7 @@ function ReportContent() {
               onClick={() => window.print()}
               className="btn-secondary text-[11.5px] px-3 py-1.5 rounded-md inline-flex items-center gap-1.5"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="6 9 6 2 18 2 18 9" />
                 <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
                 <rect x="6" y="14" width="12" height="8" />

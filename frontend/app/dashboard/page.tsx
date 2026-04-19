@@ -341,7 +341,7 @@ function Dashboard() {
   const activeCount = alerts.filter((a) => a.status === "active").length;
 
   return (
-    <div className="h-screen relative overflow-hidden" data-tour="map">
+    <div id="main" className="h-screen relative overflow-hidden" data-tour="map">
       {/* Full-bleed map */}
       <MapView
         vessels={vessels}

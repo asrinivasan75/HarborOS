@@ -345,11 +345,11 @@ export default function FeatureTour({
                 className="text-slate-500 hover:text-slate-200 transition-colors p-1 rounded hover:bg-white/5"
               >
                 {paused ? (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                     <polygon points="5,3 19,12 5,21" />
                   </svg>
                 ) : (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="6" y="4" width="4" height="16" />
                     <rect x="14" y="4" width="4" height="16" />
                   </svg>
@@ -360,7 +360,7 @@ export default function FeatureTour({
                 title="Begin again"
                 className="text-slate-500 hover:text-slate-200 transition-colors p-1 rounded hover:bg-white/5"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="1 4 1 10 7 10" />
                   <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
                 </svg>
@@ -370,7 +370,7 @@ export default function FeatureTour({
                 title="Close"
                 className="text-slate-600 hover:text-slate-300 transition-colors p-1 rounded hover:bg-white/5"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>
@@ -388,7 +388,7 @@ export default function FeatureTour({
 
           {!paused && current?.hint && (
             <p className="text-[11px] text-cyan-400/80 mb-4 flex items-center gap-1.5">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0">
+              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0">
                 <path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
               </svg>
               {current.hint}

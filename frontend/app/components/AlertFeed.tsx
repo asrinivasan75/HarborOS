@@ -128,7 +128,7 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
           </span>
         </div>
         <div className="relative">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.3-4.3" />
           </svg>
@@ -170,7 +170,7 @@ export default function AlertFeed({ alerts, alertsTotal, selectedAlertId, onSele
         {filtered.length === 0 ? (
           <div className="p-6 text-center">
             <div className="w-10 h-10 rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mx-auto mb-3">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-slate-500">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-slate-500">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 6v6l4 2" />
               </svg>
@@ -290,7 +290,7 @@ function SortButton({ label, active, ascending, onClick }: { label: string; acti
     >
       {label}
       {active && (
-        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="transition-transform duration-200" style={{ transform: ascending ? "rotate(180deg)" : undefined }}>
+        <svg aria-hidden="true" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="transition-transform duration-200" style={{ transform: ascending ? "rotate(180deg)" : undefined }}>
           <path d="M12 5v14M5 12l7 7 7-7" />
         </svg>
       )}

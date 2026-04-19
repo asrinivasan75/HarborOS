@@ -4,7 +4,7 @@ import LaunchButton from "@/app/components/LaunchButton";
 
 export default function DocsPage() {
   return (
-    <main className="min-h-screen">
+    <main id="main" className="min-h-screen">
       <SiteNav active="Docs" />
       <DocsHero />
 

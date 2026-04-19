@@ -4,7 +4,7 @@ import LaunchButton from "@/app/components/LaunchButton";
 
 export default function Landing() {
   return (
-    <main className="min-h-screen">
+    <main id="main" className="min-h-screen">
       <SiteNav />
       <Hero />
       <Features />
@@ -68,7 +68,7 @@ function UiStack() {
       {/* Map card */}
       <div className="absolute top-0 right-0 w-[460px] max-w-full h-[320px] glass rounded-xl p-4 overflow-hidden">
         <div className="flex justify-between items-center mb-2.5">
-          <h3 className="text-[12.5px] font-semibold text-slate-200">LA Harbor</h3>
+          <div className="text-[12.5px] font-semibold text-slate-200">LA Harbor</div>
           <span className="font-mono text-[10px] text-slate-400 py-0.5 px-2 rounded-full bg-white/[0.04] border border-white/[0.06]">149 active</span>
         </div>
         <div className="relative w-full h-[calc(100%-28px)] rounded-lg overflow-hidden bg-[#0a0e1a]">
@@ -77,7 +77,7 @@ function UiStack() {
                  backgroundImage: "linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px)",
                  backgroundSize: "32px 32px"
                }} />
-          <svg className="absolute inset-0 w-full h-full" viewBox="0 0 500 340" preserveAspectRatio="none">
+          <svg aria-hidden="true" className="absolute inset-0 w-full h-full" viewBox="0 0 500 340" preserveAspectRatio="none">
             <path d="M 0 180 Q 80 160 160 170 Q 240 180 320 175 Q 400 170 500 180" stroke="rgba(255,255,255,.08)" strokeWidth="1" fill="none" />
             <path d="M 0 220 Q 100 210 200 220 Q 300 230 400 225 Q 450 220 500 225" stroke="rgba(255,255,255,.05)" strokeWidth="1" fill="none" />
           </svg>
@@ -96,7 +96,7 @@ function UiStack() {
       <div className="absolute top-[220px] -left-4 sm:-left-6 lg:-left-10 w-[320px] max-w-[92vw] glass rounded-xl p-4">
         <div className="flex justify-between items-start mb-2.5">
           <div className="min-w-0">
-            <h4 className="text-[14px] font-semibold leading-tight truncate">MV Jade Star</h4>
+            <div className="text-[14px] font-semibold leading-tight truncate">MV Jade Star</div>
             <div className="text-[11px] text-slate-500 font-mono tabular-nums mt-0.5">MMSI 538007493</div>
           </div>
           <span className="text-[9.5px] font-semibold py-0.5 px-2 rounded-full bg-red-400/12 text-red-300 border border-red-400/25 uppercase tracking-[0.1em] shrink-0">Escalate</span>
@@ -229,7 +229,7 @@ function Features() {
             <div aria-hidden className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/[0.05] rounded-full blur-2xl -translate-y-10 translate-x-10" />
             <div className="relative">
               <div className="w-9 h-9 rounded-lg mb-3 border border-cyan-400/25 bg-cyan-500/[0.06] flex items-center justify-center text-cyan-300">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></svg>
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" /></svg>
               </div>
               <h4 className="text-[14px] font-semibold mb-1 text-slate-100">Sentinel-2 fusion</h4>
               <p className="text-[12.5px] text-slate-400 leading-[1.55]">10 m optical, live Copernicus catalog. Verify any contact on the map in one click.</p>
@@ -240,7 +240,7 @@ function Features() {
             <div aria-hidden className="absolute top-0 right-0 w-32 h-32 bg-pink-500/[0.05] rounded-full blur-2xl -translate-y-10 translate-x-10" />
             <div className="relative">
               <div className="w-9 h-9 rounded-lg mb-3 border border-pink-400/25 bg-pink-500/[0.06] flex items-center justify-center text-pink-300">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h4" /></svg>
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h4" /></svg>
               </div>
               <h4 className="text-[14px] font-semibold mb-1 text-slate-100">Signed incident reports</h4>
               <p className="text-[12.5px] text-slate-400 leading-[1.55]">PDF briefs with audit chain intact. Interagency-ready. Exported from the vessel panel.</p>
@@ -311,7 +311,7 @@ function ConsolePreview() {
                    backgroundImage: "linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px)",
                    backgroundSize: "44px 44px"
                  }} />
-            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 1000 600" preserveAspectRatio="none">
+            <svg aria-hidden="true" className="absolute inset-0 w-full h-full" viewBox="0 0 1000 600" preserveAspectRatio="none">
               <path d="M 80 300 Q 180 280 280 290 T 460 310 L 510 280 Q 560 270 600 300 L 650 330 Q 720 340 780 310 T 960 340" stroke="rgba(255,255,255,.08)" strokeWidth="1" fill="none" />
               <path d="M 80 360 Q 200 380 320 360 T 560 380 L 600 400 Q 680 410 780 385 T 960 405" stroke="rgba(255,255,255,.05)" strokeWidth="1" fill="none" />
             </svg>

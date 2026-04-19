@@ -3,7 +3,7 @@ import Reveal from "@/app/components/Reveal";
 
 export default function DetectorsPage() {
   return (
-    <main className="min-h-screen">
+    <main id="main" className="min-h-screen">
       <SiteNav active="Detectors" />
       <PageHero
         eyebrow="11 detectors · normalized"

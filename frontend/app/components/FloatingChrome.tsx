@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import type { Region } from "@/app/lib/api";
+import { api } from "@/app/lib/api";
 import Logomark from "@/app/components/Logomark";
 import ReturnHome from "@/app/components/ReturnHome";
 
@@ -45,6 +46,8 @@ export default function FloatingChrome({
   onOpenCommandPalette,
 }: FloatingChromeProps) {
   const [regionOpen, setRegionOpen] = useState(false);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [countsLoading, setCountsLoading] = useState(false);
   const regionMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -57,6 +60,45 @@ export default function FloatingChrome({
     window.addEventListener("mousedown", handler);
     return () => window.removeEventListener("mousedown", handler);
   }, [regionOpen]);
+
+  // Lazy-fetch vessel counts per region when dropdown opens. Refresh every 30s while open.
+  useEffect(() => {
+    if (!regionOpen) return;
+    const keys = Object.keys(regions);
+    if (keys.length === 0) return;
+    let cancelled = false;
+
+    const fetchCounts = async () => {
+      setCountsLoading(true);
+      try {
+        const results = await Promise.all(
+          keys.map(async (key) => {
+            try {
+              const r = await api.getVessels(key, 1, 0);
+              return [key, r.total] as const;
+            } catch {
+              return [key, 0] as const;
+            }
+          }),
+        );
+        if (cancelled) return;
+        const next: Record<string, number> = {};
+        for (const [k, n] of results) next[k] = n;
+        setCounts(next);
+      } finally {
+        if (!cancelled) setCountsLoading(false);
+      }
+    };
+
+    fetchCounts();
+    const id = setInterval(fetchCounts, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [regionOpen, regions]);
+
+  const totalCount = Object.values(counts).reduce((sum, n) => sum + n, 0);
 
   const activeLabel = activeRegion
     ? shortName(activeRegion, regions[activeRegion]?.name ?? activeRegion)
@@ -79,19 +121,21 @@ export default function FloatingChrome({
             regionOpen ? "border-violet-400/40" : "border-white/[0.14] hover:border-white/[0.22]"
           }`}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
             <circle cx="12" cy="10" r="3" />
           </svg>
           <span className="font-semibold text-slate-100">{activeLabel}</span>
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`text-slate-500 transition-transform ${regionOpen ? "rotate-180" : ""}`}>
+          <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`text-slate-500 transition-transform ${regionOpen ? "rotate-180" : ""}`}>
             <path d="M6 9l6 6 6-6" />
           </svg>
         </button>
         {regionOpen && (
-          <div className="absolute top-[calc(100%+6px)] left-0 min-w-[240px] p-1.5 rounded-xl bg-[rgba(18,22,36,0.95)] backdrop-blur-2xl border border-white/[0.14] shadow-[0_20px_48px_rgba(0,0,0,0.5)]">
+          <div className="absolute top-[calc(100%+6px)] left-0 min-w-[260px] p-1.5 rounded-xl bg-[rgba(18,22,36,0.95)] backdrop-blur-2xl border border-white/[0.14] shadow-[0_20px_48px_rgba(0,0,0,0.5)]">
             <RegionItem
               name="Global"
+              count={totalCount > 0 ? totalCount : null}
+              loading={countsLoading && totalCount === 0}
               active={activeRegion === null}
               onClick={() => { onSelectRegion(null); setRegionOpen(false); }}
             />
@@ -100,6 +144,8 @@ export default function FloatingChrome({
               <RegionItem
                 key={key}
                 name={shortName(key, regions[key].name)}
+                count={counts[key] ?? null}
+                loading={countsLoading && counts[key] == null}
                 active={activeRegion === key}
                 onClick={() => { onSelectRegion(key); setRegionOpen(false); }}
               />
@@ -113,7 +159,7 @@ export default function FloatingChrome({
         onClick={onOpenCommandPalette}
         className="pointer-events-auto flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-[rgba(18,22,36,0.82)] backdrop-blur-xl border border-white/[0.14] hover:bg-[rgba(18,22,36,0.9)] hover:border-white/[0.22] transition-colors text-[12.5px] text-slate-400"
       >
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.3-4.3" />
         </svg>
@@ -145,7 +191,7 @@ export default function FloatingChrome({
             : "bg-[rgba(18,22,36,0.82)] border-white/[0.14] text-slate-300 hover:border-white/[0.22]"
         }`}
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 3v18h18" />
           <path d="M7 14l4-4 4 4 5-5" />
         </svg>
@@ -173,20 +219,43 @@ export default function FloatingChrome({
   );
 }
 
-function RegionItem({ name, active, onClick }: { name: string; active: boolean; onClick: () => void }) {
+function RegionItem({
+  name,
+  count,
+  loading,
+  active,
+  onClick,
+}: {
+  name: string;
+  count: number | null;
+  loading: boolean;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[12.5px] transition-colors ${
+      className={`group w-full flex items-center justify-between gap-3 px-2.5 py-2 rounded-lg text-[12.5px] transition-colors ${
         active ? "bg-white/[0.06] text-slate-100" : "text-slate-300 hover:bg-white/[0.03]"
       }`}
     >
-      <span className="font-medium">{name}</span>
-      {active && (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-violet-300">
-          <path d="M20 6L9 17l-5-5" />
-        </svg>
-      )}
+      <span className="font-medium truncate">{name}</span>
+      <span className="flex items-center gap-2 shrink-0">
+        <span
+          className={`font-mono text-[10.5px] tabular-nums px-1.5 py-0.5 rounded ${
+            active
+              ? "text-violet-200 bg-violet-500/[0.12] border border-violet-400/25"
+              : "text-slate-500 group-hover:text-slate-300"
+          }`}
+        >
+          {loading ? "…" : count != null ? count.toLocaleString() : "—"}
+        </span>
+        {active && (
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-violet-300">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        )}
+      </span>
     </button>
   );
 }

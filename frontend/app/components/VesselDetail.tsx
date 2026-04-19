@@ -141,7 +141,7 @@ function RiskSparkline({ data }: { data: RiskHistoryPoint[] }) {
         </span>
       </div>
       <div className="px-2 pb-1">
-        <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block">
+        <svg aria-hidden="true" width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block">
           <defs>
             <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={lineColor} stopOpacity="0.15" />
@@ -449,7 +449,7 @@ export default function VesselDetailPanel({
               onClick={onClose}
               className="w-7 h-7 rounded-lg bg-[#111827] border border-[#1a2235] flex items-center justify-center text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
@@ -1081,7 +1081,7 @@ function ReportView({ report, onBack }: { report: Record<string, unknown>; onBac
           onClick={onBack}
           className="flex items-center gap-1.5 text-[10px] text-slate-400 hover:text-slate-100 transition-colors uppercase tracking-[0.14em] font-medium shrink-0"
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
           Back
@@ -1095,7 +1095,7 @@ function ReportView({ report, onBack }: { report: Record<string, unknown>; onBac
           className="flex items-center gap-1.5 text-[10px] text-slate-400 hover:text-violet-300 transition-colors uppercase tracking-[0.14em] font-medium shrink-0"
         >
           Open
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
             <polyline points="15 3 21 3 21 9" />
             <line x1="10" y1="14" x2="21" y2="3" />

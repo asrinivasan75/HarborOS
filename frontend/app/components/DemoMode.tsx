@@ -505,7 +505,7 @@ export default function DemoMode(props: DemoModeProps) {
         onClick={handleStart}
         className="absolute top-4 right-16 z-50 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-lg shadow-blue-500/20 transition-colors flex items-center gap-2"
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="5,3 19,12 5,21" />
         </svg>
         Start Demo
@@ -542,7 +542,7 @@ export default function DemoMode(props: DemoModeProps) {
               onClick={handleClose}
               className="absolute top-3 right-3 text-slate-600 hover:text-slate-300 transition-colors p-1"
             >
-              <svg
+              <svg aria-hidden="true"
                 width="16"
                 height="16"
                 viewBox="0 0 24 24"

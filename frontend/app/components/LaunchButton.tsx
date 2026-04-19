@@ -130,7 +130,7 @@ function LaunchOverlay({ onDone }: { onDone: () => void }) {
 function StatusDot({ state }: { state: "done" | "active" | "pending" }) {
   if (state === "done") {
     return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0">
+      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0">
         <path d="M20 6L9 17l-5-5" />
       </svg>
     );

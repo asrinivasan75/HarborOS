@@ -49,7 +49,7 @@ export default function VesselCompare({ vessels, onRemove, onClear }: VesselComp
     <div className="bg-[#0d1320]/95 backdrop-blur-md border-t border-[#1a2235] px-4 py-3" style={{ minHeight: "140px", maxHeight: "240px" }}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-blue-400">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-blue-400">
             <rect x="3" y="3" width="7" height="7" />
             <rect x="14" y="3" width="7" height="7" />
             <rect x="3" y="14" width="7" height="7" />
@@ -87,7 +87,7 @@ export default function VesselCompare({ vessels, onRemove, onClear }: VesselComp
                 onClick={() => onRemove(vessel.id)}
                 className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded-md text-slate-500 hover:text-slate-200 hover:bg-[#1a2235] transition-colors"
               >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>

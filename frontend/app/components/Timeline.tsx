@@ -91,12 +91,12 @@ export default function Timeline({ onTimeChange }: TimelineProps) {
         className="w-7 h-7 flex items-center justify-center rounded-md bg-[#111827] border border-[#1a2235] text-slate-400 hover:text-blue-400 hover:border-blue-500/30 transition-colors"
       >
         {isPlaying ? (
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+          <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
             <rect x="1" y="1" width="3" height="8" rx="0.5" />
             <rect x="6" y="1" width="3" height="8" rx="0.5" />
           </svg>
         ) : (
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+          <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
             <polygon points="2,1 9,5 2,9" />
           </svg>
         )}
