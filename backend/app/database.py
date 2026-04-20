@@ -11,6 +11,13 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 DB_PATH = os.environ.get("HARBOROS_DB", "harboros.db")
+
+# Ensure the parent directory exists. Required on Railway/Fly/Render when pointing at
+# a mounted volume (e.g. HARBOROS_DB=/data/harboros.db) — SQLite won't create the dir.
+_db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+if _db_dir:
+    os.makedirs(_db_dir, exist_ok=True)
+
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
